@@ -85,6 +85,8 @@ export function initApp(Alpine: AlpineType) {
     webToolsOpen: false,
     webToolsTab: 'search' as 'search' | 'fetch',
     webTools: null as any,
+    searchTesting: false,
+    searchTestResult: null as { level: 'ok' | 'error', text: string } | null,
 
     isSearchProviderEnabled(type: string): boolean {
       return this.webTools?.search?.providers?.find((p: any) => p.type === type)?.enabled ?? false
@@ -106,9 +108,30 @@ export function initApp(Alpine: AlpineType) {
       if (p)
         p.apiKey = key
     },
+    getSearchProviderBaseUrl(type: string): string {
+      return this.webTools?.search?.providers?.find((p: any) => p.type === type)?.baseUrl ?? ''
+    },
+    setSearchProviderBaseUrl(type: string, value: string) {
+      if (!this.webTools?.search)
+        return
+      const p = this.webTools.search.providers.find((x: any) => x.type === type)
+      if (p)
+        p.baseUrl = value
+    },
     setSearchOption(key: string, value: any) {
       if (this.webTools?.search)
         (this.webTools.search as any)[key] = value
+    },
+    testSearchProvider(type: string) {
+      if (this.searchTesting)
+        return
+      this.searchTesting = true
+      this.searchTestResult = null
+      this.post('testSearchProvider', {
+        type,
+        apiKey: this.getSearchProviderKey(type),
+        baseUrl: this.getSearchProviderBaseUrl(type),
+      })
     },
     setFetchProvider(provider: string) {
       if (this.webTools)
@@ -889,6 +912,12 @@ export function initApp(Alpine: AlpineType) {
         return
       s.ac.results = msg.results || []
       s.ac.selected = 0
+    }
+    else if (msg?.type === 'searchTestResult') {
+      s.searchTesting = false
+      s.searchTestResult = msg.ok
+        ? { level: 'ok', text: msg.text || 'OK' }
+        : { level: 'error', text: msg.text || 'Failed' }
     }
     else if (msg?.type === 'toast') {
       s.toast(msg.text, msg.level || 'info', msg.duration ?? 4000)

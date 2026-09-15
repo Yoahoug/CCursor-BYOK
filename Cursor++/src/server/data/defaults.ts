@@ -279,6 +279,11 @@ export interface SearchProviderEntry {
   type: SearchProviderType
   enabled: boolean
   apiKey?: string
+  /**
+   * API 地址覆盖 — 用于自建中转/代理网关。
+   * 留空则使用各 provider 的官方地址。当前支持 tavily / firecrawl。
+   */
+  baseUrl?: string
 }
 
 export type FetchProviderType = 'builtin' | 'jina' | 'firecrawl'
@@ -295,6 +300,15 @@ export interface WebToolsConfig {
     providers: SearchProviderEntry[]
     parallel: boolean
     maxResults: number
+    /**
+     * 全部启用的 provider 都失败时,是否回落到 DuckDuckGo 抓取。
+     *
+     * 默认 true(保留兜底能力)。注意: DDG 会对抓取返回 202 反爬挑战页,
+     * 页面上只有 "About DuckDuckGo / lite / here" 这类导航链接。
+     * searchDuckDuckGo 已加入挑战页识别,遇到拦截会抛出明确错误,
+     * 不会再把导航链接当成搜索结果返回给模型。
+     */
+    fallbackToDuckDuckGo?: boolean
   }
   fetch: FetchProviderConfig
 }
@@ -303,15 +317,12 @@ export const DEFAULT_WEB_TOOLS: WebToolsConfig = {
   $schemaVersion: 1,
   search: {
     providers: [
-      { id: 'default-ddg', type: 'duckduckgo', enabled: true },
-      { id: 'default-exa', type: 'exa', enabled: false },
       { id: 'default-tavily', type: 'tavily', enabled: false },
-      { id: 'default-brave', type: 'brave', enabled: false },
-      { id: 'default-jina', type: 'jina', enabled: false },
-      { id: 'default-firecrawl', type: 'firecrawl', enabled: false },
+      { id: 'default-ddg', type: 'duckduckgo', enabled: false },
     ],
     parallel: false,
     maxResults: 10,
+    fallbackToDuckDuckGo: true,
   },
   fetch: {
     provider: 'builtin',

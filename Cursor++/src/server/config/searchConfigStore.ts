@@ -23,6 +23,7 @@ function withFallback(loaded: Partial<WebToolsConfig> | null): WebToolsConfig {
       providers: loaded.search?.providers ?? clone(DEFAULT_WEB_TOOLS.search.providers),
       parallel: loaded.search?.parallel ?? DEFAULT_WEB_TOOLS.search.parallel,
       maxResults: loaded.search?.maxResults ?? DEFAULT_WEB_TOOLS.search.maxResults,
+      fallbackToDuckDuckGo: loaded.search?.fallbackToDuckDuckGo ?? DEFAULT_WEB_TOOLS.search.fallbackToDuckDuckGo,
     },
     fetch: {
       provider: loaded.fetch?.provider ?? DEFAULT_WEB_TOOLS.fetch.provider,

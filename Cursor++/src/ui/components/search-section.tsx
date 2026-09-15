@@ -2,12 +2,8 @@ import { CustomSelect } from './custom-select'
 import { Modal } from './modal'
 
 const SEARCH_PROVIDERS = [
-  { type: 'duckduckgo', name: 'DuckDuckGo', needsKey: false, hint: 'Free, no API key needed' },
-  { type: 'exa', name: 'Exa', needsKey: true, hint: 'Semantic search — 1,000 free/month' },
-  { type: 'tavily', name: 'Tavily', needsKey: true, hint: 'LLM-optimized — 1,000 free/month' },
-  { type: 'brave', name: 'Brave Search', needsKey: true, hint: 'Independent index — ~1,000 free/month' },
-  { type: 'jina', name: 'Jina', needsKey: true, hint: 'Full content extraction — 10M free tokens' },
-  { type: 'firecrawl', name: 'Firecrawl', needsKey: true, hint: 'Scrape + search — self-hostable' },
+  { type: 'tavily', name: 'Tavily', needsKey: true, supportsBaseUrl: true, hint: 'LLM-optimized — 1,000 free/month, supports custom relay' },
+  { type: 'duckduckgo', name: 'DuckDuckGo', needsKey: false, supportsBaseUrl: false, hint: 'Free fallback — often blocked by anti-bot (202)' },
 ] as const
 
 const FETCH_PROVIDERS = [
@@ -68,8 +64,8 @@ export function WebToolsDialog() {
                   <span class="qs-switch-knob"></span>
                 </label>
               </div>
-              {sp.needsKey && (
-                <div class="search-provider-key" x-show={`$store.app.isSearchProviderEnabled('${sp.type}')`}>
+              <div class="search-provider-key" x-show={`$store.app.isSearchProviderEnabled('${sp.type}')`}>
+                {sp.needsKey && (
                   <input
                     type="password"
                     placeholder="API Key"
@@ -77,8 +73,36 @@ export function WebToolsDialog() {
                     x-on:input={`$store.app.setSearchProviderKey('${sp.type}', $event.target.value)`}
                     autocomplete="off"
                   />
-                </div>
-              )}
+                )}
+                {sp.supportsBaseUrl && (
+                  <>
+                    <input
+                      type="text"
+                      placeholder="Base URL (optional) — relay / gateway, e.g. http://relay.local:8181"
+                      x-bind:value={`$store.app.getSearchProviderBaseUrl('${sp.type}')`}
+                      x-on:input={`$store.app.setSearchProviderBaseUrl('${sp.type}', $event.target.value)`}
+                      autocomplete="off"
+                      style="margin-top:4px"
+                    />
+                    <div class="search-provider-actions">
+                      <button
+                        type="button"
+                        class="search-test-btn"
+                        x-on:click={`$store.app.testSearchProvider('${sp.type}')`}
+                        x-bind:disabled="$store.app.searchTesting"
+                      >
+                        <span x-show="!$store.app.searchTesting">Test connection</span>
+                        <span x-show="$store.app.searchTesting">Testing…</span>
+                      </button>
+                      <span
+                        class="search-test-result"
+                        x-bind:class="'level-' + ($store.app.searchTestResult?.level || 'none')"
+                        x-text="$store.app.searchTestResult?.text || ''"
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           ))}
           <div class="search-options">
@@ -104,6 +128,19 @@ export function WebToolsDialog() {
                 ]}
               />
             </div>
+          </div>
+          <div class="search-options" style="border-top:none;padding-top:0;margin-top:8px">
+            <label
+              class="check"
+              title="When the configured provider fails, fall back to scraping DuckDuckGo. DDG frequently serves an anti-bot page (HTTP 202), which this build detects and reports as an error instead of returning junk links."
+            >
+              <input
+                type="checkbox"
+                x-bind:checked="$store.app.webTools?.search?.fallbackToDuckDuckGo !== false"
+                x-on:change="$store.app.setSearchOption('fallbackToDuckDuckGo', $event.target.checked)"
+              />
+              {' Fallback to DuckDuckGo'}
+            </label>
           </div>
         </div>
       </div>

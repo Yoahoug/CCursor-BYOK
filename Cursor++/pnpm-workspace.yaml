@@ -1,3 +1,6 @@
 allowBuilds:
+  '@google/genai': false
+  '@vscode/vsce-sign': false
   esbuild: true
+  keytar: false
   protobufjs: true

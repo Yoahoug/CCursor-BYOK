@@ -214,15 +214,34 @@ import type { FetchProviderConfig, SearchProviderEntry, WebToolsConfig } from '.
 
 export type SearchRef = { title: string, url: string, chunk: string }
 
+/**
+ * DuckDuckGo 抓取会返回 202 + 反爬挑战页（"Select all squares containing a duck"）。
+ * 该页面上只有 "About DuckDuckGo / lite / here" 几个导航链接，没有 result__a 结果节点。
+ * 旧版实现直接跑兜底正则抓全页链接，把这些导航链接当成搜索结果返回给模型，
+ * 造成静默失败。这里显式识别拦截页并抛错。
+ */
+function isDuckDuckGoChallengePage(html: string): boolean {
+  if (!html.includes('result__a') && !html.includes('result__snippet')) {
+    if (/Select all squares containing a duck|Unfortunately, bots use DuckDuckGo/i.test(html))
+      return true
+  }
+  return false
+}
+
 async function searchDuckDuckGo(searchTerm: string, max: number): Promise<SearchRef[]> {
   const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(searchTerm)}`
   const response = await fetch(searchUrl, {
     headers: { 'user-agent': USER_AGENT, 'accept': 'text/html' },
     redirect: 'follow',
   })
+  // 202 属于 2xx，response.ok 为 true，所以必须单独判断反爬状态码。
+  if (response.status === 202)
+    throw new Error('DDG search blocked by anti-bot challenge (HTTP 202); configure an API search provider instead')
   if (!response.ok)
     throw new Error(`DDG search failed: ${response.status}`)
   const html = await response.text()
+  if (isDuckDuckGoChallengePage(html))
+    throw new Error('DDG search blocked by anti-bot challenge; configure an API search provider instead')
   const refs: SearchRef[] = []
   const regex = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]{0,1200}?(?:<a[^>]+class="result__snippet"[^>]*>|<div[^>]+class="result__snippet"[^>]*>)([\s\S]*?)(?:<\/a>|<\/div>)/gi
   let match: RegExpExecArray | null
@@ -232,15 +251,6 @@ async function searchDuckDuckGo(searchTerm: string, max: number): Promise<Search
     const chunk = stripTags(match[3]).slice(0, 400)
     if (title && href)
       refs.push({ title, url: href, chunk })
-  }
-  if (refs.length === 0) {
-    const fallback = /<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi
-    while ((match = fallback.exec(html)) && refs.length < max) {
-      const href = decodeDuckDuckGoHref(match[1])
-      const title = stripTags(match[2])
-      if (href.startsWith('http') && title && title.length >= 3)
-        refs.push({ title, url: href, chunk: '' })
-    }
   }
   return refs
 }
@@ -262,8 +272,9 @@ async function searchExa(apiKey: string, searchTerm: string, max: number): Promi
   })).filter((r: SearchRef) => r.title && r.url)
 }
 
-async function searchTavily(apiKey: string, searchTerm: string, max: number): Promise<SearchRef[]> {
-  const res = await fetch('https://api.tavily.com/search', {
+async function searchTavily(apiKey: string, searchTerm: string, max: number, baseUrl?: string): Promise<SearchRef[]> {
+  const endpoint = `${(baseUrl || 'https://api.tavily.com').replace(/\/+$/, '')}/search`
+  const res = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ api_key: apiKey, query: searchTerm, max_results: max }),
@@ -342,10 +353,10 @@ async function searchWithProvider(provider: SearchProviderEntry, searchTerm: str
   switch (provider.type) {
     case 'duckduckgo': return searchDuckDuckGo(searchTerm, max)
     case 'exa': return searchExa(provider.apiKey!, searchTerm, max)
-    case 'tavily': return searchTavily(provider.apiKey!, searchTerm, max)
+    case 'tavily': return searchTavily(provider.apiKey!, searchTerm, max, provider.baseUrl)
     case 'brave': return searchBrave(provider.apiKey!, searchTerm, max)
     case 'jina': return searchJina(provider.apiKey || '', searchTerm, max)
-    case 'firecrawl': return searchFirecrawl(provider.apiKey!, searchTerm, max)
+    case 'firecrawl': return searchFirecrawl(provider.apiKey!, searchTerm, max, provider.baseUrl)
     default: throw new Error(`unknown search provider: ${provider.type}`)
   }
 }
@@ -374,7 +385,11 @@ function deduplicateResults(results: SearchRef[], max: number): SearchRef[] {
 export async function performWebSearch(searchTerm: string, config?: WebToolsConfig['search']): Promise<SearchRef[]> {
   const cfg = config ?? getSearchConfig()
   const enabled = cfg.providers.filter(p => p.enabled && (p.type === 'duckduckgo' || p.apiKey))
+  const allowDdgFallback = cfg.fallbackToDuckDuckGo !== false
+
   if (enabled.length === 0) {
+    if (!allowDdgFallback)
+      throw new Error('No search provider configured. Enable one in the Cursor++ panel (Web Tools).')
     return searchDuckDuckGo(searchTerm, cfg.maxResults)
   }
 
@@ -383,15 +398,30 @@ export async function performWebSearch(searchTerm: string, config?: WebToolsConf
       enabled.map(p => searchWithProvider(p, searchTerm, cfg.maxResults)),
     )
     const merged: SearchRef[] = []
+    let lastError: unknown = null
     for (const r of settled) {
       if (r.status === 'fulfilled')
         merged.push(...r.value)
-      else
-        logger.warn({ error: r.reason?.message }, '[WEB] parallel search provider failed')
+      else {
+        lastError = r.reason
+        logger.warn({ error: (r.reason as Error)?.message }, '[WEB] parallel search provider failed')
+      }
     }
-    const deduped = deduplicateResults(merged, cfg.maxResults)
-    logger.info({ searchTerm, providers: enabled.length, total: merged.length, deduped: deduped.length }, '[WEB] parallel search completed')
-    return deduped
+    if (merged.length > 0) {
+      const deduped = deduplicateResults(merged, cfg.maxResults)
+      logger.info({ searchTerm, providers: enabled.length, total: merged.length, deduped: deduped.length }, '[WEB] parallel search completed')
+      return deduped
+    }
+    if (allowDdgFallback) {
+      logger.warn('[WEB] all parallel providers failed, fallback to DDG')
+      try {
+        return await searchDuckDuckGo(searchTerm, cfg.maxResults)
+      }
+      catch (ddgError) {
+        throw new Error(`All search providers failed. Last provider error: ${(lastError as Error)?.message ?? 'unknown'}. DDG fallback: ${(ddgError as Error).message}`)
+      }
+    }
+    throw new Error(`All search providers failed. Last error: ${(lastError as Error)?.message ?? 'unknown'}`)
   }
 
   const provider = enabled[0]
@@ -401,7 +431,55 @@ export async function performWebSearch(searchTerm: string, config?: WebToolsConf
     return results
   }
   catch (e) {
-    logger.warn({ provider: provider.type, error: (e as Error).message }, '[WEB] primary search failed, fallback to DDG')
-    return searchDuckDuckGo(searchTerm, cfg.maxResults)
+    const providerError = (e as Error).message
+    logger.warn({ provider: provider.type, error: providerError }, '[WEB] primary search failed')
+    if (!allowDdgFallback)
+      throw new Error(`${provider.type} search failed: ${providerError}`)
+    logger.warn({ provider: provider.type }, '[WEB] fallback to DDG')
+    try {
+      return await searchDuckDuckGo(searchTerm, cfg.maxResults)
+    }
+    catch (ddgError) {
+      throw new Error(`${provider.type} search failed: ${providerError}. DDG fallback also failed: ${(ddgError as Error).message}`)
+    }
   }
+}
+
+/**
+ * 面板"Test connection"按钮用 — 用一条固定查询探活当前配置的 provider。
+ *
+ * 走的是与真实搜索完全相同的代码路径(searchWithProvider),所以能一并验证:
+ * baseUrl 是否可达、apiKey 是否有效、响应结构是否被正确解析。
+ * 成功时返回可读的摘要(命中条数 / 耗时 / 实际使用的端点)。
+ */
+export async function performSearchTest(
+  providerType: string,
+  apiKey: string,
+  baseUrl?: string,
+): Promise<string> {
+  const provider = {
+    id: 'connection-test',
+    type: providerType as SearchProviderEntry['type'],
+    enabled: true,
+    apiKey: apiKey || undefined,
+    baseUrl: baseUrl || undefined,
+  } as SearchProviderEntry
+
+  const endpoint = providerType === 'tavily'
+    ? `${(baseUrl || 'https://api.tavily.com').replace(/\/+$/, '')}/search`
+    : providerType === 'firecrawl'
+      ? `${(baseUrl || 'https://api.firecrawl.dev').replace(/\/+$/, '')}/v1/search`
+      : `(official ${providerType} endpoint)`
+
+  if (providerType !== 'duckduckgo' && !apiKey)
+    throw new Error('API key is empty')
+
+  const startedAt = Date.now()
+  const results = await searchWithProvider(provider, 'cursor ide byok test', 3)
+  const elapsedMs = Date.now() - startedAt
+
+  if (results.length === 0)
+    throw new Error(`Reached ${endpoint} but it returned 0 results — check quota or key scope`)
+
+  return `OK — ${results.length} result(s) in ${elapsedMs}ms via ${endpoint}`
 }

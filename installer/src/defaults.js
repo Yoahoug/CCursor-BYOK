@@ -133,15 +133,12 @@ export const DEFAULT_WEB_TOOLS = {
   $schemaVersion: 1,
   search: {
     providers: [
-      { id: 'default-ddg', type: 'duckduckgo', enabled: true },
-      { id: 'default-exa', type: 'exa', enabled: false },
       { id: 'default-tavily', type: 'tavily', enabled: false },
-      { id: 'default-brave', type: 'brave', enabled: false },
-      { id: 'default-jina', type: 'jina', enabled: false },
-      { id: 'default-firecrawl', type: 'firecrawl', enabled: false },
+      { id: 'default-ddg', type: 'duckduckgo', enabled: false },
     ],
     parallel: false,
     maxResults: 10,
+    fallbackToDuckDuckGo: true,
   },
   fetch: {
     provider: 'builtin',
