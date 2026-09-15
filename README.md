@@ -32,7 +32,7 @@
 
 ## 我改了什么
 
-改动集中在 **Web Search / Web Tools** 这一块，并新增了一套打包/发布工作流。
+改动集中在 **Web Search / Web Tools** 这一块，并把发布链路从线上构建改成了本地一键发布。
 
 ### 1. 修复 Web Search 静默失败（核心修复）
 
@@ -171,59 +171,71 @@ Tavily 抓取**不单独存 key**，而是**复用 Search 标签页里 Tavily �
 
 更新包的下载地址取自 Release 资产而非 npm，因此**不依赖 npm 上是否存在同名包**——发布通道完全由本仓库掌控。
 
-### 7. 打包与发布工作流
+### 7. 本地构建发布（不再走线上构建）
 
-新增三个 GitHub Actions 工作流 + 一套本地门禁，形成「本地先验证 → 线上才打包」的链路。
+**背景**：原先由 GitHub Actions 打 tag 后自动构建发布（`release.yml`）。但线上构建持续报错，且排查链路很长——build agent 上没有 Cursor 环境，扩展到原生模块相关的失败很难在远端复现。
 
-#### 本地门禁（提交前强制）
+**改动**：删除线上构建链路，改为**本地一键构建 + 推送**：
 
-```bash
-cd Cursor++ && node scripts/verify.mjs
-```
+| 已删除 | 说明 |
+|---|---|
+| `.github/workflows/release.yml` | 打 tag 时在 GitHub Actions 上构建并发布（线上构建） |
+| `.github/workflows/ci.yml` | push / PR 时的远端构建门禁 |
+| `scripts/pre-commit` + `scripts/install-hooks.mjs` | 本地 pre-commit 钩子（每次提交都强制跑完整门禁） |
+| `Cursor++/scripts/verify.mjs` | 上述两者共用的门禁脚本 |
 
-依次跑 **类型检查 → lint → 单元测试 → 生产构建**，任一失败即非零退出。已通过 `git pre-commit hook` 接入，**提交前自动执行，不通过就拒绝提交**。
+| 保留 | 说明 |
+|---|---|
+| `.github/workflows/upstream-watch.yml` | 每日检测上游更新（只提醒、不自动合并） |
 
-安装 hook（clone 后执行一次）：
-
-```bash
-node scripts/install-hooks.mjs
-```
-
-> hook 脚本本身放在 `scripts/pre-commit` 并纳入版本控制，`.git/hooks/` 只是副本 —— 因为 `.git/` 不进版本库，直接写在那里的话换机器就静默失效了。
-> 确有需要时可 `git commit --no-verify` 绕过。
-
-#### `ci.yml` —— 远端复验
-
-push 到 `main` / 开 PR 时跑**同一份** `scripts/verify.mjs`。与本地 hook 共用一套通过标准，因此不会出现「本地绿、CI 红」的偏差。CI 独立复验是必要的：hook 可以被 `--no-verify` 绕过，协作者也可能没装 hook。
-
-#### `release.yml` —— 打 tag 自动打包发布
+新流程只依赖一条命令：
 
 ```bash
-# 1. 先把两个 package.json 的版本号改好（必须与 tag 一致）
-# 2. 打 tag 推送
-git tag v0.0.17
-git push origin v0.0.17
+node scripts/release.mjs --bump patch
 ```
 
-工作流会：
+它会依次完成：
 
-1. `checkout` 该 tag
-2. **再跑一遍完整门禁**（tag 可能打在历史提交上，且发出去的产物值得单独验证）
-3. `vsce package` 产出 `.vsix`
-4. 校验 **tag 与 `Cursor++/package.json` 版本一致**，不一致直接失败
-5. 创建 Release 并挂上 `.vsix` 资产
+1. **前置检查** —— 分支是否在 `main`、`gh` 是否已登录、工作区是否干净、依赖是否装好
+2. **版本一致性** —— `Cursor++/package.json` 与 `installer/package.json` 版本必须相同，并按 `--bump` 升版
+3. **检查** —— typecheck → lint → 单元测试（可用 `--skip-checks` 跳过）
+4. **生产构建** —— esbuild 生产构建，产出 `Cursor++/dist/`
+5. **多端产物校验** —— 见下
+6. **打包 VSIX** —— `vsce package`
+7. **发布** —— 提交版本号 → 打 annotated tag → 推送分支与 tag → `gh release create` 上传 `.vsix`
 
-> 版本一致性检查是有意加的：更新检测靠比较 `tag` 与扩展内版本号，两者错位会让用户永远看到「有新版本」。
+#### 为什么本地构建依然"兼容多端"
 
-用 tag 触发而不是 push main 自动发版：一次 Release 就是对外的「一个可用版本」，应由人显式决定，否则每次修字都会发版、刷屏更新提示。
+VSIX 里带的不是单平台产物。`supermarkdown` 的原生模块按平台分发，构建时会被**全部**复制进 `dist/` 并打进包：
 
-#### `upstream-watch.yml` —— 每日检测官方更新
+```text
+supermarkdown.darwin-arm64.node      supermarkdown.linux-x64-gnu.node
+supermarkdown.darwin-x64.node        supermarkdown.linux-x64-musl.node
+supermarkdown.linux-arm64-gnu.node   supermarkdown.win32-arm64-msvc.node
+supermarkdown.linux-arm64-musl.node  supermarkdown.win32-x64-msvc.node
+```
 
-每天北京时间 09:00 检查上游 `CometixSpace/CCursor` 是否发布了比本地更高的版本，有则**开一个 issue** 提醒。
+扩展在运行时按 `process.platform` / `arch` 加载对应文件。所以**在 macOS 上构建出的 VSIX，可以直接发给 Windows / Linux 用户**——不需要为每个平台各构建一次。
 
-**为什么只提醒、不自动合并**：上游改动可能落在本仓库二改过的同一批文件上（尤其是 `web.ts`），自动合并会冲掉二改逻辑或留下难以察觉的语义冲突。issue 里会列出**需要重点核对的文件清单**与合并步骤，决策留给人。
+脚本在打包前会逐个校验这套文件是否齐全（外加 `extension.js` / `webview.js` / `o200k_base.js`），缺任何一个就中止发布，避免"少了某个平台"的残缺产物被发出去。
 
-> 注意版本方向：上游目前是 `0.0.14`，本仓库 `0.0.16`（二改版领先）。工作流只在**上游更高**时才提醒，不会因为「版本号不同」就误报。
+#### 常用参数
+
+```bash
+node scripts/release.mjs                    # 用 package.json 现有版本发版
+node scripts/release.mjs --bump patch       # 升版本再发版（patch | minor | major）
+node scripts/release.mjs --dry-run          # 只构建 + 校验，不推任何东西
+node scripts/release.mjs --skip-checks      # 跳过 typecheck / lint / 单测
+node scripts/release.mjs --allow-dirty      # 允许工作区有未提交改动（不推荐）
+```
+
+发布前建议先 `--dry-run` 跑一遍：它会完整走完构建与多端校验，但不改远端状态。
+
+> 前置条件：`gh` CLI 已登录（`gh auth status`）。脚本通过 `gh` 创建 Release，不依赖仓库里配置任何 secret。
+
+#### 与更新通道的衔接
+
+扩展内的 `update-check.ts` 读 `releases/latest` 并下载其中的 `.vsix` 资产，因此脚本必须发布成**正式** Release（非 draft / 非 prerelease），且 tag 去掉 `v` 前缀后要与 `package.json` 的 `version` 完全一致 —— 版本错位会让用户永远看到「有新版本」却装不上。脚本在多个环节（读版本、查重、`--verify-tag`）都做了校验。
 
 ### 8. 其他
 
@@ -236,16 +248,10 @@ git push origin v0.0.17
 ### 改动文件清单
 
 ```text
-.github/workflows/ci.yml                          | new
-.github/workflows/release.yml                     | new
-.github/workflows/upstream-watch.yml              | new
-scripts/install-hooks.mjs                         | new
-scripts/pre-commit                                | new
-Cursor++/scripts/verify.mjs                       | new
-Cursor++/package.json                             |   4 +-
+scripts/release.mjs                               | new  （本地一键构建 + 发布）
 Cursor++/src/update-check.ts                      | 重写（走本仓库 Release + 一键更新）
 Cursor++/src/extension.ts                         |   2 +-
-Cursor++/src/server/tests/protocol.test.ts        |   9 +-
+Cursor++/package.json                             |   4 +-
 Cursor++/src/server/config/searchConfigStore.ts   |  22 +++-
 Cursor++/src/server/data/defaults.ts              |  45 ++++++-
 Cursor++/src/server/handlers/agent/web.ts         | 165 +++++++++++++++++++----
@@ -254,11 +260,22 @@ Cursor++/src/ui/components/styles.ts              |  12 ++
 Cursor++/src/ui/panel-provider.ts                 |  46 +++++++
 Cursor++/src/ui/state.ts                          |   2 +-
 Cursor++/src/ui/webview/app.ts                    |  60 +++++++-
+Cursor++/src/server/tests/protocol.test.ts        |   9 +-
 Cursor++/src/server/tests/webFetchProvider.test.ts | new
 Cursor++/src/server/tests/webFetchLive.test.ts     | new
 installer/package.json                            |   2 +-
 installer/package-lock.json                       |   6 +-
 installer/src/defaults.js                         |   9 +-
+
+# workflow
+.github/workflows/upstream-watch.yml              | new（保留）
+.github/workflows/ci.yml                          | 已删除
+.github/workflows/release.yml                     | 已删除
+
+# 已删除的本地门禁（原 pre-commit hook 链路）
+scripts/pre-commit                                | 已删除
+scripts/install-hooks.mjs                         | 已删除
+Cursor++/scripts/verify.mjs                       | 已删除
 ```
 
 ---

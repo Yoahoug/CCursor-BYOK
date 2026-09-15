@@ -92,8 +92,6 @@
     }
   },
   "scripts": {
-    "verify": "node scripts/verify.mjs",
-    "verify:quick": "node scripts/verify.mjs --quick",
     "compile": "pnpm run check-types && pnpm run lint && node esbuild.js",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",

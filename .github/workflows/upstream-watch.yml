@@ -117,11 +117,16 @@ jobs:
              - \`Cursor++/src/ui/components/search-section.tsx\` —— Web Tools 面板
              - \`Cursor++/src/ui/webview/app.ts\` —— Fetch 配置复用状态
              - \`Cursor++/src/update-check.ts\` —— 更新检测指向本仓库 Release
-          4. 合并后跑门禁（也必须过，否则无法提交）：
+          4. 合并后本地验证（改动过 Web Fetch / 更新通道尤其要跑）：
              \`\`\`bash
-             cd Cursor++ && node scripts/verify.mjs
+             cd Cursor++ && npx tsc --noEmit && npx eslint src && npx vitest run
              \`\`\`
-          5. 确认无误后，把 \`Cursor++/package.json\` 与 \`installer/package.json\` 的版本号提升到高于上游，打 tag 触发 Release。
+          5. 确认无误后，把 \`Cursor++/package.json\` 与 \`installer/package.json\` 的版本号
+             提升到高于上游，然后本地一键发版（会自动构建、打 tag、推送并创建 Release）：
+             \`\`\`bash
+             node scripts/release.mjs --bump patch
+             \`\`\`
+             产物在本地构建，VSIX 内含各平台原生模块，可直接分发给 Windows / Linux 用户。
 
           > 若上游本次改动与本仓库无重叠（例如纯文档 / 依赖升级），直接合并即可。
           EOF
