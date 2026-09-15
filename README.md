@@ -196,13 +196,35 @@ node scripts/release.mjs --bump patch
 
 它会依次完成：
 
-1. **前置检查** —— 分支是否在 `main`、`gh` 是否已登录、工作区是否干净、依赖是否装好
+1. **前置检查** —— 分支是否在 `main`、`gh` 是否已登录、工作区是否干净、依赖是否装好，以及**能否定位到本机 Cursor**（本地安装目标提前确认，避免构建完才发现装不上）
 2. **版本一致性** —— `Cursor++/package.json` 与 `installer/package.json` 版本必须相同，并按 `--bump` 升版
 3. **检查** —— typecheck → lint → 单元测试（可用 `--skip-checks` 跳过）
 4. **生产构建** —— esbuild 生产构建，产出 `Cursor++/dist/`
 5. **多端产物校验** —— 见下
 6. **打包 VSIX** —— `vsce package`
-7. **发布** —— 提交版本号 → 打 annotated tag → 推送分支与 tag → `gh release create` 上传 `.vsix`
+7. **更新本地扩展** —— 把刚打好的 VSIX 就地装到本机 Cursor 的 `extensions/cursor2plus/`（见下）
+8. **发布** —— 提交版本号 → 打 annotated tag → 推送分支与 tag → `gh release create` 上传 `.vsix`
+
+#### 同时更新本地扩展
+
+只推 Release 的话，本机跑的还是旧代码 —— 这个仓库就踩过这个坑：二改功能都已提交，但本地扩展停在旧构建上，而**版本号没变**，从版本上根本看不出差异。所以默认把本地一并更新掉，保证「发出去的版本 = 本机在跑的版本」。
+
+几个实现上的取舍：
+
+- **顺序放在推送之前**。这样"装不上"这类问题会在创建公开 Release 之前就暴露；反过来则会出现「Release 已发布、本机却没更新成功」的半成品状态。
+- **不调用 installer 的 `install()`**。那条路径会连带重打 Cursor 本体补丁（renderer hook / always-local / 签名绕过…），而这里只是替换扩展本体，补丁早就在位，重打一遍既慢又多一份备份噪音。
+- **`dist/` 先删后拷**。旧版本可能留下已被移除的文件（例如换掉 provider 后残留的模块），整体覆盖会把僵尸文件留下来。
+- **装完校验**：确认多端原生模块都在、且落盘的 `package.json` 版本与目标版本一致。
+- **旧版本备份**到 `~/.ccursor/backups/`（保留最近 3 份）。特意不放在 `/tmp`——那里重启后会被系统清掉，真要回滚时已经没了。
+- 覆盖文件不影响正在运行的 Cursor（JS 与原生模块都已加载进内存），但**需重启才会加载新代码**，脚本会提示。Windows 例外：被占用的 `.node` 会写入失败，所以那里要求先完全退出。
+
+想只本地试跑、暂不发布，用 `--local-only`：
+
+```bash
+node scripts/release.mjs --local-only
+```
+
+该模式**不检查分支、`gh` 登录与工作区是否干净**——带着未提交的改动在本地试跑，正是它最常用的场景。反过来说，它也不打 tag、不发 Release，随时可以反复跑。
 
 #### 为什么本地构建依然"兼容多端"
 
@@ -222,16 +244,25 @@ supermarkdown.linux-arm64-musl.node  supermarkdown.win32-x64-msvc.node
 #### 常用参数
 
 ```bash
-node scripts/release.mjs                    # 用 package.json 现有版本发版
+node scripts/release.mjs                    # 发版 + 同步更新本地扩展
 node scripts/release.mjs --bump patch       # 升版本再发版（patch | minor | major）
-node scripts/release.mjs --dry-run          # 只构建 + 校验，不推任何东西
+node scripts/release.mjs --local-only       # 只构建 + 更新本地，不推送、不发 Release
+node scripts/release.mjs --no-install       # 只发版，不动本机扩展
+node scripts/release.mjs --dry-run          # 只构建 + 校验，不写本地、不推任何东西
 node scripts/release.mjs --skip-checks      # 跳过 typecheck / lint / 单测
 node scripts/release.mjs --allow-dirty      # 允许工作区有未提交改动（不推荐）
 ```
 
-发布前建议先 `--dry-run` 跑一遍：它会完整走完构建与多端校验，但不改远端状态。
+三种典型用法：
+
+1. **完整发布**（最常用）—— `--bump patch`：构建 → 打包 → 更新本地 → 推送发布
+2. **只想本地试跑** —— `--local-only`：改完代码先在本机验一遍，确认没问题再正式发版
+3. **只发版不动本机** —— `--no-install`
+
+发布前建议先 `--dry-run` 跑一遍：它会完整走完构建与多端校验，但不写本地、不改远端状态。
 
 > 前置条件：`gh` CLI 已登录（`gh auth status`）。脚本通过 `gh` 创建 Release，不依赖仓库里配置任何 secret。
+> `--local-only` 不需要这些，也不要求工作区干净。
 
 #### 与更新通道的衔接
 
@@ -248,7 +279,7 @@ node scripts/release.mjs --allow-dirty      # 允许工作区有未提交改动�
 ### 改动文件清单
 
 ```text
-scripts/release.mjs                               | new  （本地一键构建 + 发布）
+scripts/release.mjs                               | new  （本地一键构建 + 更新本地扩展 + 发布）
 Cursor++/src/update-check.ts                      | 重写（走本仓库 Release + 一键更新）
 Cursor++/src/extension.ts                         |   2 +-
 Cursor++/package.json                             |   4 +-
