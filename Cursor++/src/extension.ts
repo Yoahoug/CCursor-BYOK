@@ -557,8 +557,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
   log('info', 'Cursor++ activated')
 
-  // 版本更新检查
-  startUpdateCheck(context.globalState, msg => log('info', msg))
+  // 版本更新检查（走二改版自己的 GitHub Release 通道）
+  startUpdateCheck(context.globalState, context, msg => log('info', msg))
 }
 
 export async function deactivate() {

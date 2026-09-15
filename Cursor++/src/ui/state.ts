@@ -45,7 +45,7 @@ let current: AppState = {
   byokMode: 1,
   version: EXTENSION_VERSION,
   providers: [],
-  webTools: { $schemaVersion: 1, search: { providers: [], parallel: false, maxResults: 5, fallbackToDuckDuckGo: true }, fetch: { provider: 'builtin' } },
+  webTools: { $schemaVersion: 1, search: { providers: [], parallel: false, maxResults: 5, fallbackToDuckDuckGo: true }, fetch: { provider: 'tavily' } },
   fileLogEnabled: false,
   logFilePath: '',
 }

@@ -3,7 +3,7 @@
  */
 import type { WebToolsConfig } from '../data/defaults'
 import { existsSync, unwatchFile, watchFile } from 'node:fs'
-import { DEFAULT_WEB_TOOLS } from '../data/defaults'
+import { DEFAULT_WEB_TOOLS, normalizeFetchProvider } from '../data/defaults'
 import { logger } from '../logger'
 import { readJsonOrNull, withSerial, writeJsonAtomic } from './atomic'
 import { getWebToolsFilePath } from './paths'
@@ -14,6 +14,13 @@ function clone<T>(value: T): T {
 
 let cache: WebToolsConfig | null = null
 
+/**
+ * 把磁盘上读到的配置补成完整结构。
+ *
+ * fetch 段只保留 `provider`：Tavily 抓取复用 search 侧 Tavily 项的 key / baseUrl，
+ * 老配置里遗留的 `fetch.jina` / `fetch.firecrawl` 以及已下线的 provider 值
+ * 都在这里被丢弃，避免读到失效字段后抓取静默落到内置分支。
+ */
 function withFallback(loaded: Partial<WebToolsConfig> | null): WebToolsConfig {
   if (!loaded)
     return clone(DEFAULT_WEB_TOOLS)
@@ -26,9 +33,7 @@ function withFallback(loaded: Partial<WebToolsConfig> | null): WebToolsConfig {
       fallbackToDuckDuckGo: loaded.search?.fallbackToDuckDuckGo ?? DEFAULT_WEB_TOOLS.search.fallbackToDuckDuckGo,
     },
     fetch: {
-      provider: loaded.fetch?.provider ?? DEFAULT_WEB_TOOLS.fetch.provider,
-      ...(loaded.fetch?.jina ? { jina: loaded.fetch.jina } : {}),
-      ...(loaded.fetch?.firecrawl ? { firecrawl: loaded.fetch.firecrawl } : {}),
+      provider: normalizeFetchProvider(loaded.fetch?.provider),
     },
   }
 }

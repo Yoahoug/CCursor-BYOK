@@ -307,6 +307,11 @@ export const styles = /* css */ `
   .fetch-provider-row .search-provider-name { white-space: nowrap; }
   .fetch-provider-hint { font-size: 9px; opacity: 0.5; padding-left: 20px; margin-top: 1px; }
   .fetch-provider-row input[type=radio] { flex-shrink: 0; margin: 0; width: auto; background: none; border: none; padding: 0; }
+  .fetch-provider-reuse { padding-left: 20px; margin-top: 6px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+  .fetch-provider-reuse-status { font-size: 10px; line-height: 1.3; word-break: break-word; }
+  .fetch-provider-reuse-status.level-ok { color: var(--vscode-testing-iconPassed, #73c991); }
+  .fetch-provider-reuse-status.level-warn { color: var(--vscode-editorWarning-foreground, #cca700); }
+  .fetch-provider-goto-search { font-size: 10px; padding: 2px 6px; cursor: pointer; }
   .toast-info { background: var(--vscode-inputValidation-infoBackground, #063b49); border: 1px solid var(--vscode-inputValidation-infoBorder, #007acc); color: var(--vscode-foreground); }
   .toast-enter { animation: toast-in .2s ease-out; }
   .toast-leave { animation: toast-out .15s ease-in; }

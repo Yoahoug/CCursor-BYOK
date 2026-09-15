@@ -121,40 +121,110 @@ async function fetchBuiltin(url: string): Promise<{ url: string, markdown: strin
   finally { clearTimeout(timer) }
 }
 
-async function fetchJina(url: string, apiKey: string): Promise<{ url: string, markdown: string }> {
-  const headers: Record<string, string> = { 'Accept': 'application/json' }
-  if (apiKey)
-    headers.Authorization = `Bearer ${apiKey}`
-  const response = await fetch(`https://r.jina.ai/${url}`, {
-    headers,
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  })
-  if (!response.ok)
-    throw new Error(`Jina reader failed: ${response.status}`)
-  const json = await response.json() as any
-  const data = json.data || json
-  return {
-    url: data.url || url,
-    markdown: (data.content || data.text || '').slice(0, MAX_MARKDOWN_CHARS),
+/**
+ * Discourse 论坛的 topic JSON 响应 → 可读 markdown。
+ *
+ * Tavily 抓取 `https://<forum>/t/topic/<id>.json` 时，`raw_content` 是未经加工的
+ * 原始 JSON（一页 20 帖约 90-135KB）。直接透传有两个问题：
+ *   1. 超过 MAX_MARKDOWN_CHARS 被截断，模型只看到前几帖 + 一堆转义字符；
+ *   2. `cooked` 字段里全是 HTML 标签与转义实体，可读性差。
+ * 这里把扁平的 post 列表还原成带楼层号的 markdown，顺带丢掉 avatar / 时间戳等
+ * 对理解内容无用的元数据，让同样的字符预算能装下更多正文。
+ */
+function formatDiscourseTopicJson(raw: string): string | null {
+  let parsed: any
+  try {
+    parsed = JSON.parse(raw)
   }
+  catch {
+    return null
+  }
+  const posts = parsed?.post_stream?.posts
+  if (!Array.isArray(posts) || posts.length === 0)
+    return null
+
+  const title = typeof parsed.title === 'string' ? parsed.title : ''
+  const lines: string[] = []
+  if (title)
+    lines.push(`# ${title}`, '')
+
+  for (const post of posts) {
+    const postNumber = post.post_number ?? '?'
+    const author = post.username || post.name || 'unknown'
+    const createdAt = typeof post.created_at === 'string' ? post.created_at.slice(0, 10) : ''
+    lines.push(`## #${postNumber} — ${author}${createdAt ? ` (${createdAt})` : ''}`)
+
+    // `raw` 是作者原始 markdown，优先用它；老帖 / 已编辑帖可能只有 `cooked` HTML。
+    const body = typeof post.raw === 'string' && post.raw.trim()
+      ? post.raw
+      : stripHtmlToText(String(post.cooked ?? ''))
+    lines.push(body.trim(), '')
+  }
+
+  return lines.join('\n').trim()
 }
 
-async function fetchFirecrawl(url: string, apiKey: string, baseUrl?: string): Promise<{ url: string, markdown: string }> {
-  const endpoint = `${(baseUrl || 'https://api.firecrawl.dev').replace(/\/+$/, '')}/v1/scrape`
+/** `cooked` HTML → 纯文本：保留段落与换行，去掉标签与常见实体 */
+function stripHtmlToText(html: string): string {
+  return decodeHtmlEntities(
+    html
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(p|div|li|blockquote|h[1-6])>/gi, '\n')
+      .replace(/<li[^>]*>/gi, '- ')
+      .replace(/<[^>]+>/g, ''),
+  ).replace(/\n{3,}/g, '\n\n')
+}
+
+/**
+ * Tavily Extract 抓取。
+ *
+ * 与内置抓取的关键差异：请求从 Tavily 的服务端出口发出，因此能拿到
+ * Cloudflare 挑战页后面的内容（linux.do 这类站点内置抓取必定 403）。
+ *
+ * 必须显式指定 `extract_depth: 'advanced'` —— basic 档位对这类受保护站点
+ * 会直接返回 `Failed to fetch url`（实测 linux.do 稳定复现）。
+ */
+async function fetchTavily(url: string, apiKey: string, baseUrl?: string): Promise<{ url: string, markdown: string }> {
+  const endpoint = `${(baseUrl || 'https://api.tavily.com').replace(/\/+$/, '')}/extract`
   const response = await fetch(endpoint, {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url, formats: ['markdown'] }),
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ urls: [url], extract_depth: 'advanced' }),
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   })
-  if (!response.ok)
-    throw new Error(`Firecrawl scrape failed: ${response.status}`)
-  const json = await response.json() as any
-  const data = json.data || json
-  return {
-    url: data.metadata?.sourceURL || url,
-    markdown: (data.markdown || data.content || '').slice(0, MAX_MARKDOWN_CHARS),
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '')
+    throw new Error(`Tavily extract failed: ${response.status}${detail ? ` ${detail.slice(0, 200)}` : ''}`)
   }
+
+  const json = await response.json() as any
+  const firstResult = Array.isArray(json?.results) ? json.results[0] : undefined
+  if (!firstResult) {
+    const failure = Array.isArray(json?.failed_results) ? json.failed_results[0] : undefined
+    throw new Error(`Tavily extract returned no content${failure?.error ? `: ${failure.error}` : ''}`)
+  }
+
+  const raw = String(firstResult.raw_content ?? '')
+  const resolvedUrl = String(firstResult.url || url)
+  const body = formatDiscourseTopicJson(raw) ?? raw
+  return { url: resolvedUrl, markdown: body.slice(0, MAX_MARKDOWN_CHARS) }
+}
+
+/**
+ * 取 Tavily 的 key / baseUrl —— 复用 Search 标签页里 Tavily 那一项的配置。
+ *
+ * 抓取与搜索是同一个 Tavily 账号，分开配置会让用户重复填一遍 key，
+ * 也容易两边填成不同的 key。没配或未启用时返回 null，由调用方回退内置抓取。
+ */
+function resolveTavilyCredentials(): { apiKey: string, baseUrl?: string } | null {
+  const tavilyEntry = getSearchConfig().providers?.find(p => p.type === 'tavily')
+  const apiKey = tavilyEntry?.apiKey?.trim()
+  if (!apiKey)
+    return null
+  return { apiKey, baseUrl: tavilyEntry?.baseUrl?.trim() || undefined }
 }
 
 export async function performWebFetch(url: string): Promise<{ url: string, markdown: string }> {
@@ -169,12 +239,36 @@ export async function performWebFetch(url: string): Promise<{ url: string, markd
   let result: { url: string, markdown: string }
 
   switch (cfg.provider) {
-    case 'jina':
-      result = await fetchJina(url, cfg.jina?.apiKey || '')
+    case 'tavily': {
+      const credentials = resolveTavilyCredentials()
+      if (!credentials) {
+        // 选了 Tavily 却还没填 key：回退内置抓取而不是直接报错，
+        // 否则用户在面板里切到 Tavily 后连普通站点都抓不了。
+        logger.warn({ url }, '[WEB] fetch provider is tavily but no Tavily API key configured; falling back to builtin')
+        result = await fetchBuiltin(url)
+        break
+      }
+      try {
+        result = await fetchTavily(url, credentials.apiKey, credentials.baseUrl)
+      }
+      catch (tavilyError) {
+        // Tavily 失败时回退内置抓取：Tavily 有配额限制，且对小站点偶尔抽风，
+        // 而内置抓取对普通站点（无 CF 防护）成功率很高。
+        //
+        // 但回退本身会掩盖真实故障：自建中转挂掉时，用户只会看到内置抓取的 403，
+        // 误以为"Tavily 没生效"。所以回退也失败时把两个原因都报出来。
+        const tavilyMessage = tavilyError instanceof Error ? tavilyError.message : String(tavilyError)
+        logger.warn({ url, error: tavilyMessage }, '[WEB] tavily fetch failed; falling back to builtin')
+        try {
+          result = await fetchBuiltin(url)
+        }
+        catch (builtinError) {
+          const builtinMessage = builtinError instanceof Error ? builtinError.message : String(builtinError)
+          throw new Error(`Tavily fetch failed: ${tavilyMessage}. Built-in fallback also failed: ${builtinMessage}`)
+        }
+      }
       break
-    case 'firecrawl':
-      result = await fetchFirecrawl(url, cfg.firecrawl?.apiKey || '', cfg.firecrawl?.baseUrl)
-      break
+    }
     default:
       result = await fetchBuiltin(url)
   }
@@ -210,7 +304,7 @@ function decodeDuckDuckGoHref(href: string): string {
 
 // ── Search: multi-provider dispatch ──
 
-import type { FetchProviderConfig, SearchProviderEntry, WebToolsConfig } from '../../data/defaults'
+import type { SearchProviderEntry, WebToolsConfig } from '../../data/defaults'
 
 export type SearchRef = { title: string, url: string, chunk: string }
 
@@ -482,4 +576,42 @@ export async function performSearchTest(
     throw new Error(`Reached ${endpoint} but it returned 0 results — check quota or key scope`)
 
   return `OK — ${results.length} result(s) in ${elapsedMs}ms via ${endpoint}`
+}
+
+/**
+ * 面板 Fetch 标签页"Test connection"用 — 验证 Tavily 抓取链路。
+ *
+ * 刻意用 example.com 而不是随机站点：这是一个稳定、无 CF 防护、内容极小的目标，
+ * 探测结果只反映"key + baseUrl 是否可用"，不会因为目标站点抽风而误报失败。
+ * 走的是与真实抓取同一条 fetchTavily 路径（含 advanced 深度参数）。
+ */
+export async function performFetchTest(
+  providerType: string,
+  apiKey: string,
+  baseUrl?: string,
+): Promise<string> {
+  if (providerType === 'builtin') {
+    const loaded = loadSupermarkdown()
+    if (!loaded.ok)
+      throw new Error(supermarkdownUnavailableMessage(loaded.error))
+    return 'OK — built-in HTML→Markdown converter available'
+  }
+
+  if (providerType !== 'tavily')
+    throw new Error(`unknown fetch provider: ${providerType}`)
+  if (!apiKey)
+    throw new Error('API key is empty — Tavily fetch reuses the key from the Search tab')
+
+  const endpoint = `${(baseUrl || 'https://api.tavily.com').replace(/\/+$/, '')}/extract`
+  const startedAt = Date.now()
+  const probeUrl = 'https://example.com'
+  const result = await fetchTavily(probeUrl, apiKey, baseUrl)
+  const elapsedMs = Date.now() - startedAt
+
+  // fetchTavily 内部会做 Discourse JSON 解析，普通页面原样返回；
+  // 走到这里只要拿到非空正文就算链路通。
+  if (!result.markdown.trim())
+    throw new Error(`Reached ${endpoint} but it returned empty content — check quota or key scope`)
+
+  return `OK — ${result.markdown.length} chars in ${elapsedMs}ms via ${endpoint}`
 }

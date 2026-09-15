@@ -141,6 +141,8 @@ export const DEFAULT_WEB_TOOLS = {
     fallbackToDuckDuckGo: true,
   },
   fetch: {
-    provider: 'builtin',
+    // 默认走 Tavily 抓取（复用 search 里 Tavily 的 key / baseUrl）：
+    // 内置抓取会被 Cloudflare 挑战页拦掉（linux.do 这类站点返回 403）。
+    provider: 'tavily',
   },
 };

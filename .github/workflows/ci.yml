@@ -1,0 +1,47 @@
+name: Build gate
+
+# 提交 / PR 时跑与本地 pre-commit 完全一致的构建门禁。
+#
+# 与 pre-commit hook 的关系：
+#   - pre-commit 是「本地第一道闸」——能在提交前拦住问题，反馈最快
+#   - 本工作流是「远端第二道闸」——hook 可以 --no-verify 绕过，也可能有人
+#     没执行 install-hooks，所以 CI 必须独立复验
+# 两者都调用 Cursor++/scripts/verify.mjs，通过标准天然一致，不会出现
+# 「本地绿、CI 红」的偏差。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: Cursor++/pnpm-lock.yaml
+
+      # 扩展源码在子目录，package.json / pnpm-lock.yaml 都在 Cursor++/ 下
+      - name: Install dependencies
+        working-directory: Cursor++
+        run: pnpm install --frozen-lockfile
+
+      - name: Build gate (typecheck + lint + tests + build)
+        working-directory: Cursor++
+        run: node scripts/verify.mjs

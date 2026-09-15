@@ -87,6 +87,8 @@ export function initApp(Alpine: AlpineType) {
     webTools: null as any,
     searchTesting: false,
     searchTestResult: null as { level: 'ok' | 'error', text: string } | null,
+    fetchTesting: false,
+    fetchTestResult: null as { level: 'ok' | 'error', text: string } | null,
 
     isSearchProviderEnabled(type: string): boolean {
       return this.webTools?.search?.providers?.find((p: any) => p.type === type)?.enabled ?? false
@@ -136,13 +138,39 @@ export function initApp(Alpine: AlpineType) {
     setFetchProvider(provider: string) {
       if (this.webTools)
         this.webTools.fetch.provider = provider
+      this.fetchTestResult = null
     },
-    setFetchKey(provider: string, key: string, value: string) {
-      if (!this.webTools)
+    /**
+     * Tavily 抓取复用 Search 标签页 Tavily 那一项的 key / baseUrl，
+     * 这里把它汇总成一行状态文案，避免用户在 Fetch 页找不到填写位置。
+     */
+    get fetchCredentialStatus(): { level: 'ok' | 'warn', text: string } {
+      const entry = this.webTools?.search?.providers?.find((p: any) => p.type === 'tavily')
+      const hasKey = Boolean(entry?.apiKey?.trim())
+      if (!hasKey) {
+        return {
+          level: 'warn',
+          text: 'No Tavily API key found — configure it in the Search tab. Until then, fetch falls back to the built-in converter (which cannot reach Cloudflare-protected sites).',
+        }
+      }
+      const baseUrl = entry?.baseUrl?.trim()
+      return {
+        level: 'ok',
+        text: baseUrl
+          ? `Using the API key from the Search tab, all fetch requests are sent to ${baseUrl}.`
+          : 'Using the API key from the Search tab with the official api.tavily.com endpoint.',
+      }
+    },
+    testFetchProvider() {
+      if (this.fetchTesting)
         return
-      if (!this.webTools.fetch[provider])
-        this.webTools.fetch[provider] = {}
-      this.webTools.fetch[provider][key] = value
+      this.fetchTesting = true
+      this.fetchTestResult = null
+      this.post('testFetchProvider', {
+        type: 'tavily',
+        apiKey: this.getSearchProviderKey('tavily'),
+        baseUrl: this.getSearchProviderBaseUrl('tavily'),
+      })
     },
     saveWebTools() {
       if (!this.webTools)
@@ -916,6 +944,12 @@ export function initApp(Alpine: AlpineType) {
     else if (msg?.type === 'searchTestResult') {
       s.searchTesting = false
       s.searchTestResult = msg.ok
+        ? { level: 'ok', text: msg.text || 'OK' }
+        : { level: 'error', text: msg.text || 'Failed' }
+    }
+    else if (msg?.type === 'fetchTestResult') {
+      s.fetchTesting = false
+      s.fetchTestResult = msg.ok
         ? { level: 'ok', text: msg.text || 'OK' }
         : { level: 'error', text: msg.text || 'Failed' }
     }

@@ -194,6 +194,29 @@ export class PanelProvider implements vscode.WebviewViewProvider {
           }
           break
         }
+        case 'testFetchProvider': {
+          const providerType = String(msg.type || '')
+          const apiKey = String(msg.apiKey || '')
+          const baseUrl = String(msg.baseUrl || '').trim()
+          try {
+            const { performFetchTest } = await import('../server/handlers/agent/web')
+            const result = await performFetchTest(providerType, apiKey, baseUrl)
+            this.view?.webview.postMessage({
+              type: 'fetchTestResult',
+              ok: true,
+              text: result,
+            })
+          }
+          catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err)
+            this.view?.webview.postMessage({
+              type: 'fetchTestResult',
+              ok: false,
+              text: errMsg,
+            })
+          }
+          break
+        }
         case 'saveProviders': {
           const next = msg.providers as ProviderEntry[]
           const requestId = typeof msg.requestId === 'string' ? msg.requestId : undefined

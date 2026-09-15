@@ -1,5 +1,17 @@
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { buildMessages, parseRunRequest } from '../handlers/agent/protocol'
+
+// parseRunRequest 会把 ~/.ccursor/knowledge-base.json 的 items 合入 userRules,
+// 于是 <user_rules> 段落是否出现取决于开发者本机的用户规则内容 —— 测试会因此
+// 随环境忽红忽绿。这里固定为空,让断言只反映用例自己构造的 requestContext。
+//
+// vi.mock 会被 vitest hoist 到所有 import 之前,所以写在 import 下方不影响生效。
+vi.mock('../config/knowledgeBaseStore', () => ({
+  listKnowledgeItems: () => [],
+  addKnowledgeItem: vi.fn(),
+  updateKnowledgeItem: vi.fn(),
+  removeKnowledgeItem: vi.fn(),
+}))
 
 it('parseRunRequest extracts prependUserMessages for mid-conversation replay', () => {
   const parsed = parseRunRequest({
@@ -193,6 +205,14 @@ it('buildMessages produces official-style system and structured user content', (
             rules: [
               {
                 content: 'Always reply in Chinese',
+                // source=2 (CURSOR_RULE_SOURCE_USER) 是真实 payload 里用户规则带的标记。
+                // 不填的话会被归到 always 规则，测不到 <user_rules> 分支。
+                source: 2,
+                type: { global: {} },
+              },
+              {
+                // 无 source 的 global 规则 = workspace 级别的 always 规则
+                content: 'Follow the project conventions',
                 type: { global: {} },
               },
               {

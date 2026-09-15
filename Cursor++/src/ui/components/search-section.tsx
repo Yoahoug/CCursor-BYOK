@@ -2,14 +2,23 @@ import { CustomSelect } from './custom-select'
 import { Modal } from './modal'
 
 const SEARCH_PROVIDERS = [
-  { type: 'tavily', name: 'Tavily', needsKey: true, supportsBaseUrl: true, hint: 'LLM-optimized — 1,000 free/month, supports custom relay' },
+  { type: 'tavily', name: 'Tavily', needsKey: true, supportsBaseUrl: true, hint: 'LLM-optimized — 1,000 free/month, supports a custom Base URL' },
   { type: 'duckduckgo', name: 'DuckDuckGo', needsKey: false, supportsBaseUrl: false, hint: 'Free fallback — often blocked by anti-bot (202)' },
 ] as const
 
 const FETCH_PROVIDERS = [
-  { type: 'builtin', name: 'Built-in (supermarkdown)', hint: 'Local HTML→Markdown, zero config' },
-  { type: 'jina', name: 'Jina Reader', hint: 'r.jina.ai — handles JS-rendered pages' },
-  { type: 'firecrawl', name: 'Firecrawl', hint: 'Scrape API — self-hostable' },
+  {
+    type: 'tavily',
+    name: 'Tavily Extract',
+    hint: 'Server-side extraction — bypasses Cloudflare challenges that block the built-in fetcher. Reuses the API key / Base URL from the Search tab.',
+    reusesSearchConfig: true,
+  },
+  {
+    type: 'builtin',
+    name: 'Built-in (supermarkdown)',
+    hint: 'Local HTML→Markdown, zero config. Cannot fetch sites behind Cloudflare (e.g. linux.do returns 403).',
+    reusesSearchConfig: false,
+  },
 ] as const
 
 export function WebToolsButton() {
@@ -78,7 +87,7 @@ export function WebToolsDialog() {
                   <>
                     <input
                       type="text"
-                      placeholder="Base URL (optional) — relay / gateway, e.g. http://relay.local:8181"
+                      placeholder="Base URL (optional) — e.g. https://api.tavily.com"
                       x-bind:value={`$store.app.getSearchProviderBaseUrl('${sp.type}')`}
                       x-on:input={`$store.app.setSearchProviderBaseUrl('${sp.type}', $event.target.value)`}
                       autocomplete="off"
@@ -161,33 +170,40 @@ export function WebToolsDialog() {
                 <span class="search-provider-name">{fp.name}</span>
               </label>
               <div class="fetch-provider-hint">{fp.hint}</div>
-              {fp.type === 'jina' && (
-                <div class="search-provider-key" x-show="$store.app.webTools?.fetch?.provider === 'jina'">
-                  <input
-                    type="password"
-                    placeholder="API Key (optional)"
-                    x-bind:value="$store.app.webTools?.fetch?.jina?.apiKey || ''"
-                    x-on:input="$store.app.setFetchKey('jina', 'apiKey', $event.target.value)"
-                    autocomplete="off"
-                  />
-                </div>
-              )}
-              {fp.type === 'firecrawl' && (
-                <div class="search-provider-key" x-show="$store.app.webTools?.fetch?.provider === 'firecrawl'">
-                  <input
-                    type="password"
-                    placeholder="API Key"
-                    x-bind:value="$store.app.webTools?.fetch?.firecrawl?.apiKey || ''"
-                    x-on:input="$store.app.setFetchKey('firecrawl', 'apiKey', $event.target.value)"
-                    autocomplete="off"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Base URL (optional, default: api.firecrawl.dev)"
-                    x-bind:value="$store.app.webTools?.fetch?.firecrawl?.baseUrl || ''"
-                    x-on:input="$store.app.setFetchKey('firecrawl', 'baseUrl', $event.target.value)"
-                    style="margin-top:4px"
-                  />
+              {fp.reusesSearchConfig && (
+                <div
+                  class="fetch-provider-reuse"
+                  x-show="$store.app.webTools?.fetch?.provider === 'tavily'"
+                >
+                  <div
+                    class="fetch-provider-reuse-status"
+                    x-bind:class="'level-' + $store.app.fetchCredentialStatus.level"
+                  >
+                    <span x-text="$store.app.fetchCredentialStatus.text" />
+                  </div>
+                  <button
+                    type="button"
+                    class="fetch-provider-goto-search"
+                    x-on:click="$store.app.webToolsTab = 'search'"
+                  >
+                    Edit in Search tab
+                  </button>
+                  <div class="search-provider-actions">
+                    <button
+                      type="button"
+                      class="search-test-btn"
+                      x-on:click="$store.app.testFetchProvider()"
+                      x-bind:disabled="$store.app.fetchTesting"
+                    >
+                      <span x-show="!$store.app.fetchTesting">Test connection</span>
+                      <span x-show="$store.app.fetchTesting">Testing…</span>
+                    </button>
+                    <span
+                      class="search-test-result"
+                      x-bind:class="'level-' + ($store.app.fetchTestResult?.level || 'none')"
+                      x-text="$store.app.fetchTestResult?.text || ''"
+                    />
+                  </div>
                 </div>
               )}
             </div>

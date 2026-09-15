@@ -1,0 +1,130 @@
+name: Upstream watch
+
+# 每天检查上游（CometixSpace/CCursor）是否发了新版本，有则开 issue 提醒。
+#
+# 为什么是「开 issue」而不是「自动合并」：
+#   本仓库是二改版，改动集中在 Web Search / Web Tools 这一块。
+#   上游的变更可能与本地的修改直接冲突（比如同样在动 web.ts），
+#   自动合并会把二改的地方冲掉，或者产生难以察觉的语义破坏。
+#   所以这里只做「发现 + 告知」，把合并决策留给人工，并在 issue 里
+#   写清本次需要重点核对哪些文件。
+
+on:
+  schedule:
+    # 每天 01:00 UTC（北京时间 09:00）
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-upstream:
+    name: Check upstream releases
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare upstream release with local version
+        id: compare
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPSTREAM_REPO: CometixSpace/CCursor
+        run: |
+          set -euo pipefail
+
+          local_version="$(node -p "require('./Cursor++/package.json').version")"
+          echo "local=$local_version" >> "$GITHUB_OUTPUT"
+
+          # 取上游最新 release；没有 release 时回退到最新 tag
+          upstream_tag="$(gh release view --repo "$UPSTREAM_REPO" --json tagName -q .tagName 2>/dev/null || true)"
+          if [ -z "$upstream_tag" ]; then
+            upstream_tag="$(gh api "repos/$UPSTREAM_REPO/tags" -q '.[0].name' 2>/dev/null || true)"
+          fi
+
+          if [ -z "$upstream_tag" ]; then
+            echo "::warning::Could not determine the upstream version (no release and no tag)."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          upstream_version="${upstream_tag#v}"
+          echo "upstream=$upstream_version" >> "$GITHUB_OUTPUT"
+
+          # 语义化版本比较：上游 > 本地才需要跟进
+          # 上游 0.0.14 < 本地 0.0.16 属正常（二改版已经领先），不应打扰
+          higher="$(node -e "
+            const [a, b] = ['$upstream_version', '$local_version'].map(v => v.split('.').map(Number));
+            let cmp = 0;
+            for (let i = 0; i < Math.max(a.length, b.length); i++) {
+              const x = a[i] ?? 0, y = b[i] ?? 0;
+              if (x !== y) { cmp = x > y ? 1 : -1; break; }
+            }
+            console.log(cmp > 0 ? 'yes' : 'no');
+          ")"
+          echo "higher=$higher" >> "$GITHUB_OUTPUT"
+          echo "Upstream: $upstream_version | Local: $local_version | Upstream is newer: $higher"
+
+      - name: Open or update tracking issue
+        if: steps.compare.outputs.higher == 'yes' && steps.compare.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPSTREAM: ${{ env.UPSTREAM_REPO || 'CometixSpace/CCursor' }}
+          UPSTREAM_VERSION: ${{ steps.compare.outputs.upstream }}
+          LOCAL_VERSION: ${{ steps.compare.outputs.local }}
+        run: |
+          set -euo pipefail
+
+          title="Upstream $UPSTREAM_VERSION is available (local: $LOCAL_VERSION)"
+          marker="<!-- upstream-watch -->"
+
+          # 已有同版本的 open issue 就不重复开
+          existing="$(gh issue list --state open --search "\"$title\" in:title" --json number -q '.[0].number' || true)"
+          if [ -n "$existing" ]; then
+            echo "Issue #$existing already tracks this upstream version; nothing to do."
+            exit 0
+          fi
+
+          body="$(cat <<EOF
+          $marker
+
+          上游发布了新版本，需要人工评估是否跟进。
+
+          | | 版本 |
+          |---|---|
+          | 上游 (CometixSpace/CCursor) | \`$UPSTREAM_VERSION\` |
+          | 本仓库 (二改版) | \`$LOCAL_VERSION\` |
+
+          ## 为什么不是自动合并
+
+          本仓库在 **Web Search / Web Tools** 一带做了本地修改（见 README「我改了什么」）。上游改动若落在同一批文件上，自动合并会冲掉二改逻辑，或者留下难以察觉的语义冲突。因此这里只做提醒，合并由人决定。
+
+          ## 建议的核对步骤
+
+          1. 看上游本次改了什么：
+             \`gh release view v$UPSTREAM_VERSION --repo $UPSTREAM --json body -q .body\`
+          2. 拉取上游并试合并：
+             \`\`\`bash
+             git remote add upstream https://github.com/$UPSTREAM.git   # 若尚未添加
+             git fetch upstream --tags
+             git merge upstream/main   # 或用 rebase / cherry-pick 挑需要的提交
+             \`\`\`
+          3. **重点核对下列被二改过的文件**，确认合并后本地改动仍在：
+             - \`Cursor++/src/server/handlers/agent/web.ts\` —— Web Fetch / Search 核心逻辑
+             - \`Cursor++/src/server/config/searchConfigStore.ts\` —— fetch 配置归一化
+             - \`Cursor++/src/server/data/defaults.ts\` —— FetchProviderType 与默认值
+             - \`Cursor++/src/ui/components/search-section.tsx\` —— Web Tools 面板
+             - \`Cursor++/src/ui/webview/app.ts\` —— Fetch 配置复用状态
+             - \`Cursor++/src/update-check.ts\` —— 更新检测指向本仓库 Release
+          4. 合并后跑门禁（也必须过，否则无法提交）：
+             \`\`\`bash
+             cd Cursor++ && node scripts/verify.mjs
+             \`\`\`
+          5. 确认无误后，把 \`Cursor++/package.json\` 与 \`installer/package.json\` 的版本号提升到高于上游，打 tag 触发 Release。
+
+          > 若上游本次改动与本仓库无重叠（例如纯文档 / 依赖升级），直接合并即可。
+          EOF
+          )"
+
+          gh issue create --title "$title" --body "$body"

@@ -37,5 +37,8 @@
   },
   "devDependencies": {
     "esbuild": "^0.28.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.0": true
   }
 }

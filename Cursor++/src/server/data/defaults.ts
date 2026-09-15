@@ -286,12 +286,18 @@ export interface SearchProviderEntry {
   baseUrl?: string
 }
 
-export type FetchProviderType = 'builtin' | 'jina' | 'firecrawl'
+export type FetchProviderType = 'builtin' | 'tavily'
 
+/**
+ * 抓取服务商配置。
+ *
+ * Tavily 抓取**不在这里单独存 key / baseUrl**，而是复用 Search 标签页里
+ * Tavily 那一项的 apiKey 与 baseUrl。理由：两者是同一个 Tavily 账号，
+ * 分开配置会出现"搜索配好了、抓取还得再填一遍"的割裂，也容易填成两个不同的 key。
+ * 所以这里只留一个 provider 选择位。
+ */
 export interface FetchProviderConfig {
   provider: FetchProviderType
-  jina?: { apiKey: string }
-  firecrawl?: { apiKey: string, baseUrl?: string }
 }
 
 export interface WebToolsConfig {
@@ -325,6 +331,23 @@ export const DEFAULT_WEB_TOOLS: WebToolsConfig = {
     fallbackToDuckDuckGo: true,
   },
   fetch: {
-    provider: 'builtin',
+    // Tavily 抓取对 Cloudflare 挑战页(linux.do 这类)有效，内置抓取会被 403 拦掉，
+    // 所以默认选它；没配 key 时 web.ts 会自动回退到内置抓取。
+    provider: 'tavily',
   },
+}
+
+/** 已被移除的 Fetch provider — 读到旧配置时按默认值处理 */
+export const REMOVED_FETCH_PROVIDERS: readonly string[] = ['jina', 'firecrawl']
+
+/**
+ * 归一化磁盘上读到的 fetch provider。
+ *
+ * 老版本 web-tools.json 里可能存着已下线的 'jina' / 'firecrawl'，
+ * 直接当默认值处理，避免 UI 单选按钮全不选中、抓取落到 default 分支。
+ */
+export function normalizeFetchProvider(value: unknown): FetchProviderType {
+  if (value === 'builtin' || value === 'tavily')
+    return value
+  return DEFAULT_WEB_TOOLS.fetch.provider
 }

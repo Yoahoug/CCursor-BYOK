@@ -6,7 +6,8 @@
 
 <p align="center">
   <strong>Cursor++ (BYOK for Cursor IDE) 的个人二改版</strong><br/>
-  重点修复 Web Search 静默失败，并为搜索服务商加入自定义 Base URL（中转站）支持
+  重点修复 Web Search 静默失败、为搜索服务商加入自定义 Base URL（中转站）支持，<br/>
+  并把 Web Fetch 切换为 Tavily（可穿透 Cloudflare 挑战页）
 </p>
 
 ---
@@ -31,7 +32,7 @@
 
 ## 我改了什么
 
-改动集中在 **Web Search / Web Tools** 这一块，共 13 个文件。
+改动集中在 **Web Search / Web Tools** 这一块，并新增了一套打包/发布工作流。
 
 ### 1. 修复 Web Search 静默失败（核心修复）
 
@@ -88,30 +89,176 @@ Tavily 的 API 地址原本是**硬编码**的 `https://api.tavily.com/search`�
 
 > 注：移除的仅是**面板入口与默认配置项**，`web.ts` 中各 provider 的实现代码（`searchExa` / `searchBrave` / `searchJina` / `searchFirecrawl`）**保持原样保留**，仍可通过直接编辑 `~/.ccursor/web-tools.json` 使用。
 
-### 5. 其他
+### 5. 抓取服务商（Fetch）改为 Tavily，默认启用
+
+**问题**：内置抓取（supermarkdown）是**本机直连**的，遇到 Cloudflare 挑战页必定失败。实测 `https://linux.do/t/topic/1957183/1912` 稳定返回：
+
+```text
+HTTP/2 403
+cf-mitigated: challenge
+server: cloudflare
+title: Just a moment...
+```
+
+换 UA（Chrome / curl / Googlebot）都是 403，与请求头无关——是站点侧的人在验证。
+
+**改动**：Fetch 侧由 `builtin | jina | firecrawl` 精简为 `builtin | tavily`，**默认 `tavily`**：
+
+| 保留 | 移除 |
+|---|---|
+| **Tavily Extract（默认）** | Jina Reader（无 key 免费档，出口 IP 已被限流，实测工具内直接 403） |
+| Built-in（零配置兜底） | Firecrawl（同样依赖外部服务，功能被 Tavily 覆盖） |
+
+Tavily Extract 的请求从 Tavily 服务端出口发出，因此能穿透上述挑战页。
+
+#### 关键实现细节
+
+- **必须用 `extract_depth: "advanced"`**。默认的 basic 档位对 linux.do 会直接返回 `Failed to fetch url`，实测稳定复现。
+- **自动识别 Discourse 论坛 JSON**。抓 `https://<forum>/t/topic/<id>.json` 时，Tavily 返回的是原始 JSON（一页 20 帖约 90–135KB），直接透传会被 10 万字符上限截断，且 `cooked` 字段全是 HTML 转义。现在会还原成带楼层号的 markdown：
+
+```markdown
+# Cursor++ 轻指南 v0.0.15
+
+## #1 — Haleclipse (2026-04-13)
+（楼主正文，用 post.raw 原始 markdown）
+
+## #2 — 一摩尔氚 (2026-04-13)
+（回复正文）
+```
+
+- **分页抓取**：Discourse 主题每页 20 帖，加 `?page=N` 即可翻页（该帖共 1947 楼 ≈ 95 页）。实测连续 12 页 **12/12 成功**，单次请求约 3 秒。
+- **两层回退**：未填 key 时回退内置抓取；Tavily 调用失败时也回退内置抓取并在日志留 `[WEB] tavily fetch failed; falling back to builtin`。避免"配了 Tavily 反而连普通站点都抓不了"。
+  - 但回退会掩盖真实故障：Base URL 配错或服务不可达时，用户只会看到内置抓取的 403，误以为"Tavily 没生效"。因此**两者都失败时会把两个原因一起抛出**：
+
+```text
+Tavily fetch failed: connect ECONNREFUSED 10.66.66.66:8181.
+Built-in fallback also failed: HTTP 403 Forbidden
+```
+
+#### 配置复用（重点）
+
+Tavily 抓取**不单独存 key**，而是**复用 Search 标签页里 Tavily 那一项的 `apiKey` 与 `baseUrl`**：
+
+- 两者是同一个 Tavily 账号，分开配置会让用户重复填写，也容易两边填成不同的 key
+- `baseUrl` 留空则走官方 `https://api.tavily.com`；若使用第三方/私有端点，**必须在 Search 标签页填好 `Base URL`**，否则请求会发往官方地址并因 key 不匹配而 401
+- Fetch 标签页会实时显示当前实际使用的地址，并提供 **Edit in Search tab** 按钮直接跳转
+- 未配置时显示黄色警告，说明当前会回退到内置抓取、且内置抓取无法访问 Cloudflare 站点
+
+`web-tools.json` 的 `fetch` 段因此只剩一个字段：
+
+```json
+"fetch": { "provider": "tavily" }
+```
+
+> 老配置里遗留的 `fetch.jina` / `fetch.firecrawl` 以及已下线的 provider 值，在读取时会被自动归一化（`normalizeFetchProvider`）为默认值，不需要手动清理。
+
+#### Fetch 侧也新增了 Test connection
+
+与搜索侧一致，走真实 `fetchTavily` 路径（含 `advanced` 参数）探活，用 `example.com` 作为稳定探测目标：
+
+- 成功：`OK — N chars in Xms via http://10.66.66.66:8181/extract`
+- 失败：红色文字显示具体原因（key 为空 / 401 / 配额 / 返回空正文）
+
+### 6. 更新检测改走本仓库，不再走官方
+
+**问题**：原 `update-check.ts` 查的是 npm 上的 `@cometix/ccursor`，并提示执行 `npx @cometix/ccursor update`。这条命令装的是**官方版**，会把二改的地方（Tavily Fetch、Search 修复等）整个覆盖掉。
+
+**改动**：
+
+- 检测源改为本仓库的 GitHub Release（`Yoahoug/CCursor-BYOK`）。仓库是 public，匿名可读，不需要 token
+- 弹出提示时提供 **Update Now**：直接下载 Release 里挂着的 `.vsix`，解压后就地覆盖当前扩展目录，完成后提示重启 Cursor
+- 另给 **Release Notes**（跳转该版本 Release 页）与 **Later**（该版本不再提醒）两个选项
+
+更新包的下载地址取自 Release 资产而非 npm，因此**不依赖 npm 上是否存在同名包**——发布通道完全由本仓库掌控。
+
+### 7. 打包与发布工作流
+
+新增三个 GitHub Actions 工作流 + 一套本地门禁，形成「本地先验证 → 线上才打包」的链路。
+
+#### 本地门禁（提交前强制）
+
+```bash
+cd Cursor++ && node scripts/verify.mjs
+```
+
+依次跑 **类型检查 → lint → 单元测试 → 生产构建**，任一失败即非零退出。已通过 `git pre-commit hook` 接入，**提交前自动执行，不通过就拒绝提交**。
+
+安装 hook（clone 后执行一次）：
+
+```bash
+node scripts/install-hooks.mjs
+```
+
+> hook 脚本本身放在 `scripts/pre-commit` 并纳入版本控制，`.git/hooks/` 只是副本 —— 因为 `.git/` 不进版本库，直接写在那里的话换机器就静默失效了。
+> 确有需要时可 `git commit --no-verify` 绕过。
+
+#### `ci.yml` —— 远端复验
+
+push 到 `main` / 开 PR 时跑**同一份** `scripts/verify.mjs`。与本地 hook 共用一套通过标准，因此不会出现「本地绿、CI 红」的偏差。CI 独立复验是必要的：hook 可以被 `--no-verify` 绕过，协作者也可能没装 hook。
+
+#### `release.yml` —— 打 tag 自动打包发布
+
+```bash
+# 1. 先把两个 package.json 的版本号改好（必须与 tag 一致）
+# 2. 打 tag 推送
+git tag v0.0.17
+git push origin v0.0.17
+```
+
+工作流会：
+
+1. `checkout` 该 tag
+2. **再跑一遍完整门禁**（tag 可能打在历史提交上，且发出去的产物值得单独验证）
+3. `vsce package` 产出 `.vsix`
+4. 校验 **tag 与 `Cursor++/package.json` 版本一致**，不一致直接失败
+5. 创建 Release 并挂上 `.vsix` 资产
+
+> 版本一致性检查是有意加的：更新检测靠比较 `tag` 与扩展内版本号，两者错位会让用户永远看到「有新版本」。
+
+用 tag 触发而不是 push main 自动发版：一次 Release 就是对外的「一个可用版本」，应由人显式决定，否则每次修字都会发版、刷屏更新提示。
+
+#### `upstream-watch.yml` —— 每日检测官方更新
+
+每天北京时间 09:00 检查上游 `CometixSpace/CCursor` 是否发布了比本地更高的版本，有则**开一个 issue** 提醒。
+
+**为什么只提醒、不自动合并**：上游改动可能落在本仓库二改过的同一批文件上（尤其是 `web.ts`），自动合并会冲掉二改逻辑或留下难以察觉的语义冲突。issue 里会列出**需要重点核对的文件清单**与合并步骤，决策留给人。
+
+> 注意版本方向：上游目前是 `0.0.14`，本仓库 `0.0.16`（二改版领先）。工作流只在**上游更高**时才提醒，不会因为「版本号不同」就误报。
+
+### 8. 其他
 
 - 新增 `WebToolsConfig.search.fallbackToDuckDuckGo` 字段（配置存储读写已同步）
 - 面板新增测试按钮与结果提示的样式
 - 版本号 `0.0.15` → `0.0.16`
 - 修复 `Cursor++/pnpm-workspace.yaml` 中 `allowBuilds` 的占位符（原值为 `set this to true or false`，会导致 `pnpm run vsix` 直接失败）
+- 修复 `protocol.test.ts` 的既有失败：测试 fixture 缺 `source` 字段导致用户规则被归类为 always 规则（该用例在改动前就无法通过，会阻塞新引入的提交门禁）
 
 ### 改动文件清单
 
 ```text
-Cursor++/package.json                             |   2 +-
-Cursor++/pnpm-workspace.yaml                      |   3 +
-Cursor++/src/server/config/searchConfigStore.ts   |   1 +
-Cursor++/src/server/data/defaults.ts              |  21 ++++-
-Cursor++/src/server/handlers/agent/web.ts         | 118 ++++++++++++++++++----
-Cursor++/src/ui/components/search-section.tsx     |  57 ++++++++++--
-Cursor++/src/ui/components/styles.ts              |   7 ++
-Cursor++/src/ui/panel-provider.ts                 |  23 +++++
+.github/workflows/ci.yml                          | new
+.github/workflows/release.yml                     | new
+.github/workflows/upstream-watch.yml              | new
+scripts/install-hooks.mjs                         | new
+scripts/pre-commit                                | new
+Cursor++/scripts/verify.mjs                       | new
+Cursor++/package.json                             |   4 +-
+Cursor++/src/update-check.ts                      | 重写（走本仓库 Release + 一键更新）
+Cursor++/src/extension.ts                         |   2 +-
+Cursor++/src/server/tests/protocol.test.ts        |   9 +-
+Cursor++/src/server/config/searchConfigStore.ts   |  22 +++-
+Cursor++/src/server/data/defaults.ts              |  45 ++++++-
+Cursor++/src/server/handlers/agent/web.ts         | 165 +++++++++++++++++++----
+Cursor++/src/ui/components/search-section.tsx     |  84 ++++++++++---
+Cursor++/src/ui/components/styles.ts              |  12 ++
+Cursor++/src/ui/panel-provider.ts                 |  46 +++++++
 Cursor++/src/ui/state.ts                          |   2 +-
-Cursor++/src/ui/webview/app.ts                    |  29 ++++++
+Cursor++/src/ui/webview/app.ts                    |  60 +++++++-
+Cursor++/src/server/tests/webFetchProvider.test.ts | new
+Cursor++/src/server/tests/webFetchLive.test.ts     | new
 installer/package.json                            |   2 +-
 installer/package-lock.json                       |   6 +-
-installer/src/defaults.js                         |   7 +-
-13 个文件，+232 / -46
+installer/src/defaults.js                         |   9 +-
 ```
 
 ---
@@ -204,7 +351,7 @@ robocopy "$tmp\extension" $target /E
 | `providers.json` | LLM 服务商与模型定义 |
 | `routes.json` | BYOK 开关与重定向白名单 |
 
-### `web-tools.json` 示例（使用自建中转）
+### `web-tools.json` 示例
 
 ```json
 {
@@ -216,7 +363,7 @@ robocopy "$tmp\extension" $target /E
         "type": "tavily",
         "enabled": true,
         "apiKey": "your-api-key",
-        "baseUrl": "http://your-relay-host:8181"
+        "baseUrl": "https://api.tavily.com"
       },
       { "id": "default-ddg", "type": "duckduckgo", "enabled": false }
     ],
@@ -224,12 +371,13 @@ robocopy "$tmp\extension" $target /E
     "maxResults": 10,
     "fallbackToDuckDuckGo": true
   },
-  "fetch": { "provider": "builtin" }
+  "fetch": { "provider": "tavily" }
 }
 ```
 
 - `baseUrl` 留空或省略 → 使用官方 `https://api.tavily.com`
 - `fallbackToDuckDuckGo` 设为 `false` → 搜索失败时直接报错，不做任何兜底
+- `fetch.provider` 可选 `tavily`（默认，复用上面 Tavily 的 key / baseUrl）或 `builtin`（本机直连，无法访问 Cloudflare 站点）
 
 以上配置也可直接在 Cursor++ 侧边栏面板的 **Web Tools** 中可视化修改。
 
