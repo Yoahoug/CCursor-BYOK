@@ -12,13 +12,13 @@
  *   anthropic / openai-chat / openai-responses / gemini
  *
  * 其中 openai-chat 与 openai-responses 是一对纯内部术语 —— 它们描述的是同一个
- * SDK、同一个 baseURL 下请求路径不同的两个端点。用户没有办法从名字判断，所以
- * UI 把选择重新表述成用户**能自行判断**的两级：
- *   第一级  用哪家的协议      Anthropic / OpenAI / Gemini
- *   第二级  仅 OpenAI 系需要  具体端点 Responses / Chat Completions
- * 这层呈现只影响 UI；存储和运行时见的都是 4 个平铺取值。
+ * SDK、同一个 baseURL 下请求路径不同的两个端点，用户无法从名字判断谁是谁。
+ * 所以 UI 只暴露**能自行判断**的那一档：Anthropic / OpenAI / Gemini 三选一。
+ * OpenAI 系具体走 Chat Completions 还是 Responses 由推导与探测决定
+ * （官方域名推 Responses，中转站推 Chat Completions，见 defaultProtocolForModel；
+ * 一键探测则直接把结果写进 model.type）。
  *
- * 而多数情况下用户连第一级都不用点：新建模型默认按模型名推导
+ * 而多数情况下用户连这一档都不用点：新建模型默认按模型名推导
  * （见 defaultProtocolForModel），推导结果在保存时固化进配置。
  *
  * 用户填的是地址**前缀**，剩下由协议补全
@@ -37,14 +37,24 @@
  */
 import type { ProviderType } from '../server/data/defaults'
 
-/** 第一级：用哪家的协议。openai-chat 与 openai-responses 在这一级是同一项。 */
+/** 用户能自行判断的那一档协议 —— openai-chat 与 openai-responses 在这一档是同一项。 */
 export type ProtocolFamily = 'anthropic' | 'openai' | 'gemini'
 
-/** 第二级：仅 OpenAI 系需要，对应两个真实端点路径。 */
+/**
+ * OpenAI 系内部的两个端点，对应两个真实路径。
+ *
+ * 纯内部概念：用户无法从名字判断该选哪个，所以 UI 不暴露它 —— 由推导与探测决定。
+ * 见本文件头部说明与 providerTypeOf。
+ */
 export type OpenAIEndpointKind = 'responses' | 'chat'
 
 export interface ProtocolFamilyOption {
   value: ProtocolFamily
+  /**
+   * 分段控件上的**短名** —— 侧边栏很窄，三档并排时每档只有 ~60px，
+   * "Anthropic Messages" 这种全称会被折成两行、把三个按钮撑得高低不齐。
+   * 全称放在 hint 里（悬浮可见），折叠头的徽标另由 describeProviderType 给出。
+   */
   label: string
   hint: string
 }
@@ -52,18 +62,18 @@ export interface ProtocolFamilyOption {
 export const PROTOCOL_FAMILY_OPTIONS: readonly ProtocolFamilyOption[] = [
   {
     value: 'anthropic',
-    label: 'Anthropic Messages',
-    hint: 'Official Claude and any Anthropic-compatible endpoint. Requests go to <url>/v1/messages',
+    label: 'Anthropic',
+    hint: 'Anthropic Messages — Claude and any Anthropic-compatible endpoint. Requests go to <address>/v1/messages',
   },
   {
     value: 'openai',
     label: 'OpenAI',
-    hint: 'Official GPT and most relays. Requests go to <url>/chat/completions',
+    hint: 'OpenAI Chat Completions — GPT and most relays. Requests go to <address>/v1/chat/completions',
   },
   {
     value: 'gemini',
-    label: 'Google Gemini',
-    hint: 'Native Gemini protocol. Requests go to <url>/v1beta/models/<model>:streamGenerateContent',
+    label: 'Gemini',
+    hint: 'Native Gemini — requests go to <address>/v1beta/models/<model>:streamGenerateContent',
   },
 ]
 

@@ -7,6 +7,7 @@ import {
   defaultProtocolForModel,
   describeProviderType,
   familyOf,
+  PROTOCOL_FAMILY_OPTIONS,
   protocolSelectionOf,
   providerTypeOf,
   suggestProtocol,
@@ -23,6 +24,25 @@ describe('两级协议映射', () => {
     }
   })
 
+  it('分段控件的标签必须是单个词 —— 含空格会被折成两行', () => {
+    // 三档并排时每档只有 ~60px。曾经用过 "Anthropic Messages" / "Google Gemini"，
+    // 结果前两档折行、三个按钮高低不齐。这条守卫防止再次写回长名。
+    for (const option of PROTOCOL_FAMILY_OPTIONS) {
+      expect(option.label).not.toMatch(/\s/)
+      expect(option.label.length).toBeLessThanOrEqual(10)
+      // 全称与路径说明应该在 hint 里（悬浮可见），而不是靠标签承载
+      expect(option.hint).toBeTruthy()
+    }
+  })
+
+  it('每个 hint 都写清最终路径 —— 地址是前缀，版本段由协议补全', () => {
+    const hints = Object.fromEntries(PROTOCOL_FAMILY_OPTIONS.map(o => [o.value, o.hint]))
+    expect(hints.anthropic).toContain('/v1/messages')
+    // OpenAI 那条曾漏掉 /v1（改造前路径确实是 /chat/completions，现在不是了）
+    expect(hints.openai).toContain('/v1/chat/completions')
+    expect(hints.gemini).toContain('/v1beta/')
+  })
+
   it('openai-chat 与 openai-responses 归入同一个协议家族', () => {
     expect(familyOf('openai-chat')).toBe('openai')
     expect(familyOf('openai-responses')).toBe('openai')
@@ -30,7 +50,7 @@ describe('两级协议映射', () => {
     expect(familyOf('gemini')).toBe('gemini')
   })
 
-  it('家族决定第二级选择是否出现 —— gemini/anthropic 的端点固定为 chat 占位', () => {
+  it('非 OpenAI 系的端点字段固定为 chat 占位 —— 它只对 OpenAI 系有意义', () => {
     expect(protocolSelectionOf('gemini').openaiEndpoint).toBe('chat')
     expect(protocolSelectionOf('anthropic').openaiEndpoint).toBe('chat')
   })

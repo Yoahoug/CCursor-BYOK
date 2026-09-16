@@ -57,6 +57,19 @@ export const styles = /* css */ `
     --cpp-radius-pill: 999px;
     --cpp-shadow: 0 1px 2px color-mix(in srgb, var(--cpp-ink) 10%, transparent);
     --cpp-shadow-lg: 0 6px 20px color-mix(in srgb, var(--cpp-ink) 28%, transparent);
+
+    /* ── 浮层毛玻璃 ──
+       与 surface 系列刻意分开。surface 是"当前前景色的低透明度叠加"（4~11% 墨水），
+       衬在面板上做卡片背景刚好；但拿它当**浮层**底色就等于全透明 —— 底下的文字会
+       直接透上来和选项叠在一起，两层字互相干扰，谁都读不清。
+
+       浮层改用 editorWidget 背景作基底（主题里本来就是给下拉/悬浮件的那个颜色），
+       再叠背景模糊：半透明、能透出环境色，但底下的内容被虚化到不影响阅读。
+       这就是 macOS 那种毛玻璃的观感，同时不引入任何写死的色值。 */
+    --cpp-glass-bg: color-mix(in srgb, var(--vscode-editorWidget-background, var(--vscode-editor-background, #ffffff)) 86%, transparent);
+    --cpp-glass-blur: saturate(180%) blur(20px);
+    --cpp-glass-border: color-mix(in srgb, var(--cpp-ink) 20%, transparent);
+    --cpp-glass-shadow: 0 12px 32px color-mix(in srgb, var(--cpp-ink) 30%, transparent), 0 2px 8px color-mix(in srgb, var(--cpp-ink) 16%, transparent);
     --cpp-mono: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace);
     --cpp-font: var(--vscode-font-family, -apple-system, "Segoe UI", system-ui, sans-serif);
     --cpp-fs: 12px;
@@ -234,11 +247,17 @@ export const styles = /* css */ `
     padding: 5px 6px;
     font-size: 10px;
     font-weight: 600;
+    /* 一行居中，不折行。
+       侧边栏很窄，三档并排时每档只有 ~60px；"Anthropic Messages" 这类长标签会被
+       折成两行，三个按钮高度就此不齐。所以标签本身已改成短名（见
+       PROTOCOL_FAMILY_OPTIONS），这里再用 nowrap 兜一层：宁可挤一点也不折行。 */
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 1px;
+    justify-content: center;
     text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .seg-btn:hover:not(:disabled) { background: var(--cpp-surface-3); color: var(--cpp-text); }
   .seg-btn.active {
@@ -534,10 +553,13 @@ export const styles = /* css */ `
     left: 0;
     right: 0;
     z-index: 50;
-    background: var(--cpp-surface);
-    border: 1px solid var(--cpp-border-strong);
+    /* 浮层必须是"能盖住底下内容"的材质 —— 用 surface 那套 4% 叠加的话，
+       底下字段的文字会透上来和选项叠在一起。见 --cpp-glass-bg 的说明。 */
+    background: var(--cpp-glass-bg);
+    backdrop-filter: var(--cpp-glass-blur);
+    border: 1px solid var(--cpp-glass-border);
     border-radius: var(--cpp-radius-sm);
-    box-shadow: var(--cpp-shadow-lg);
+    box-shadow: var(--cpp-glass-shadow);
     max-height: 240px;
     overflow-y: auto;
     padding: 3px;
@@ -595,10 +617,13 @@ export const styles = /* css */ `
     left: 0;
     right: 0;
     z-index: 20;
-    background: var(--cpp-surface);
-    border: 1px solid var(--cpp-border-strong);
+    /* 与 custom-select 同一套浮层材质：模糊 + 半透明。
+       这条尤其重要 —— 候选项是多行文本，透出底下的 Protocol、Final URL 会直接糊成一片。 */
+    background: var(--cpp-glass-bg);
+    backdrop-filter: var(--cpp-glass-blur);
+    border: 1px solid var(--cpp-glass-border);
     border-radius: var(--cpp-radius-sm);
-    box-shadow: var(--cpp-shadow-lg);
+    box-shadow: var(--cpp-glass-shadow);
     max-height: 200px;
     overflow-y: auto;
     margin-top: 3px;
@@ -881,15 +906,25 @@ export const styles = /* css */ `
     font-size: 11px;
     line-height: 1.45;
     cursor: pointer;
-    box-shadow: var(--cpp-shadow-lg);
-    background: var(--cpp-surface);
-    border: 1px solid var(--cpp-border-strong);
+    box-shadow: var(--cpp-glass-shadow);
+    /* 浮层材质：toast 是压在内容之上的，用 surface 会透出底下的正文 */
+    background: var(--cpp-glass-bg);
+    backdrop-filter: var(--cpp-glass-blur);
+    border: 1px solid var(--cpp-glass-border);
     border-left: 3px solid var(--cpp-accent);
     color: var(--cpp-text);
     animation: toast-in 0.18s ease-out;
   }
-  .toast-error { border-left-color: var(--cpp-danger); background: var(--cpp-danger-soft); }
-  .toast-warn { border-left-color: var(--cpp-warn); background: var(--cpp-warn-soft); }
+  /* 语义色**叠在**玻璃底之上，而不是替换掉它 —— 替换的话 toast 又变回透明的了。
+     两层背景：渐变层给出色调，最后一层是玻璃底。 */
+  .toast-error {
+    border-left-color: var(--cpp-danger);
+    background: linear-gradient(var(--cpp-danger-soft), var(--cpp-danger-soft)) var(--cpp-glass-bg);
+  }
+  .toast-warn {
+    border-left-color: var(--cpp-warn);
+    background: linear-gradient(var(--cpp-warn-soft), var(--cpp-warn-soft)) var(--cpp-glass-bg);
+  }
   .toast-info { border-left-color: var(--cpp-accent); }
   .toast-enter { animation: toast-in 0.2s ease-out; }
   .toast-leave { animation: toast-out 0.15s ease-in; }
@@ -1047,20 +1082,15 @@ export const styles = /* css */ `
     letter-spacing: 0.05em;
     color: var(--cpp-text-faint);
   }
-  /* 推算值标注 —— 要显眼到不会被误读成上游实测数字 */
-  .usage-est {
-    margin-left: 4px;
-    padding: 0 4px;
-    border-radius: var(--cpp-radius-pill);
-    background: var(--cpp-warn-soft);
-    border: 1px solid var(--cpp-warn-border);
-    color: var(--cpp-warn);
-    font-size: 8px;
-    letter-spacing: 0.04em;
-  }
 
-  .usage-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  /*
+    指标网格：6 等分，小卡片各占 2 份（一行三块），主指标占满一行。
+    用 6 等分而不是 3 等分，是为了让主指标能跨满整行、小卡片又能三等分 ——
+    3 等分做不到"一行三块 + 整行通栏"两种跨度并存。
+  */
+  .usage-metrics { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
   .usage-metric {
+    grid-column: span 2;
     min-width: 0;
     padding: 8px 9px;
     border-radius: var(--cpp-radius-sm);

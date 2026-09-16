@@ -66,31 +66,24 @@ export function UsageDashboard() {
               </div>
 
               <div class="usage-metric">
-                <div class="usage-label">
-                  Cache Write
-                  {/* 推算值必须显式标注，否则会被当成上游实测数字读 */}
-                  <span class="usage-est" x-show="$store.app.usageCacheWriteEstimated()">est.</span>
-                </div>
+                <div class="usage-label">Prompt</div>
                 <div
                   class="usage-value"
-                  x-text="$store.app.formatCount($store.app.usageCacheWriteValue())"
-                  {...{ 'x-bind:title': '$store.app.usageCacheWriteTitle()' }}
+                  x-text="$store.app.formatCount($store.app.usageTotals()?.promptTokens)"
+                  {...{ 'x-bind:title': '$store.app.usagePromptTitle()' }}
                 >
                 </div>
+                <div class="usage-sub">read + new</div>
               </div>
               <div class="usage-metric">
                 <div class="usage-label">Output</div>
                 <div class="usage-value" x-text="$store.app.formatCount($store.app.usageTotals()?.outputTokens)"></div>
-                <div class="usage-sub">tokens generated</div>
+                <div class="usage-sub">generated</div>
               </div>
 
               <div class="usage-metric">
                 <div class="usage-label">Calls</div>
                 <div class="usage-value" x-text="$store.app.formatCount($store.app.usageTotals()?.calls)"></div>
-                <div class="usage-sub">
-                  <span x-text="$store.app.formatCount($store.app.usageTotals()?.promptTokens)"></span>
-                  {' prompt'}
-                </div>
               </div>
             </div>
 

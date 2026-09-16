@@ -12,7 +12,7 @@
  *   - 所有表单交互由 Alpine 响应式处理, 无 innerHTML 重写
  */
 import type { ProviderEntry } from '../server/data/defaults'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import * as vscode from 'vscode'
 import { bumpRefreshSignal } from '../server'
@@ -84,13 +84,34 @@ export class PanelProvider implements vscode.WebviewViewProvider {
 
   resolveWebviewView(webviewView: vscode.WebviewView) {
     this.view = webviewView
-    webviewView.webview.options = { enableScripts: true }
+
+    // codicon 字体取自 **Cursor 本体**（`<app>/out/media/codicon.ttf`），也就是扩展目录
+    // 之外 —— 图标没必要自己再打包一份 141KB 的字体。
+    //
+    // 但必须把这个目录显式加进 localResourceRoots：webview 只允许加载 roots 之内的
+    // 本地资源，默认 roots 就是扩展目录本身。少了这一句，@font-face 的请求会被拦下，
+    // 字体静默回退到系统字体 —— 而 .codicon 用的是私有区码位，系统字体里没有，
+    // 于是图标全变成"缺字方块"（密码框旁的眼睛按钮就是这样消失的）。
+    // 注意 localResourceRoots 一旦显式给出就会**替换**默认值，所以扩展目录要一并列上。
+    const mediaDir = join(this.context.extensionPath, '..', '..', 'out', 'media')
+    const codiconPath = join(mediaDir, 'codicon.ttf')
+    const hasCodiconFont = existsSync(codiconPath)
+
+    webviewView.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [
+        this.context.extensionUri,
+        ...(hasCodiconFont ? [vscode.Uri.file(mediaDir)] : []),
+      ],
+    }
 
     const webviewJs = getWebviewJs(this.context.extensionPath)
 
-    // codicon 字体 — 引用 Cursor.app 内置的 codicon.ttf
-    const cursorAppPath = vscode.Uri.file(join(this.context.extensionPath, '..', '..', 'out', 'media', 'codicon.ttf'))
-    const codiconUri = webviewView.webview.asWebviewUri(cursorAppPath).toString()
+    // 字体找不到时宁可不注入 @font-face：那样按钮是空的，而不是更糟的方块乱码。
+    // （正常情况下这个分支走不到 —— Cursor 各平台安装目录里都带 media/codicon.ttf。）
+    const codiconUri = hasCodiconFont
+      ? webviewView.webview.asWebviewUri(vscode.Uri.file(codiconPath)).toString()
+      : undefined
 
     webviewView.webview.html = renderHtml(webviewJs, codiconUri)
 

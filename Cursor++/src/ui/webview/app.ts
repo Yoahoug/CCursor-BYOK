@@ -742,6 +742,21 @@ export function initApp(Alpine: AlpineType) {
       return this.usageStats?.total ?? null
     },
 
+    /**
+     * 总量卡片的悬浮说明。
+     *
+     * 面板上显示的是紧凑格式（166.6M），精确值只有悬浮才给 —— 跟其他指标一样，
+     * 把 6~7 位数字铺在卡片里会把布局挤爆。顺带说清这个数包含什么：
+     * 缓存读取 + 未命中输入，也就是这一窗口真正发给模型的输入量。
+     */
+    usagePromptTitle(): string {
+      const totals = this.usageTotals()
+      if (!totals)
+        return ''
+      const exact = Math.round(totals.promptTokens ?? 0).toLocaleString('en-US')
+      return `${exact} input tokens sent in this window — cache reads plus new tokens`
+    },
+
     usageHasData(): boolean {
       return (this.usageStats?.total?.calls ?? 0) > 0
     },
@@ -834,53 +849,6 @@ export function initApp(Alpine: AlpineType) {
       const last = String(days[days.length - 1]?.date ?? '')
       const short = (value: string) => value.slice(5)
       return `${short(first)} → ${short(last)} · ${days.length} days`
-    },
-
-    // ── 缓存写入指标 ──
-    //
-    // 不是所有中转站都单独上报 cache_creation_input_tokens。已对这个中转站实测确认：
-    // 它的 usage 永远只有 3 个字段 —— input_tokens / output_tokens / cache_read_input_tokens，
-    // **没有 cache_creation_input_tokens**。写缓存的那部分被直接并进 input_tokens：
-    //   冷启动   input=6342                        （6342 全部按普通输入上报）
-    //   热命中   input=198, cache_read=6144         （198 + 6144 = 6342，对得上）
-    // 注意「读」是真实的：cache_read 稳定返回，96%+ 的命中率不是算错。
-    //
-    // 显示 0 会被读成"从没写过缓存"（能读就必然写过），显示 — 又像是指标坏了。
-    // 所以这里给一个**推算值**并明确标注出来：
-    // 按 Anthropic 口径，新建缓存的就是本轮首次出现的 prompt token，
-    // 而上游已经把它并进了 input_tokens —— 那 input_tokens 就是写入量的可用估计。
-
-    usageCacheWriteReported(): boolean {
-      const totals = this.usageTotals()
-      if (!totals)
-        return true
-      // 有缓存命中却始终没有写入计数 → 该中转站不单独上报这个字段
-      return !(totals.cacheWriteTokens === 0 && totals.cacheReadTokens > 0)
-    },
-
-    /** 上游上报就用上报值；不报则用未命中输入推算 */
-    usageCacheWriteValue(): number {
-      const totals = this.usageTotals()
-      if (!totals)
-        return 0
-      return this.usageCacheWriteReported()
-        ? (totals.cacheWriteTokens ?? 0)
-        : (totals.nonCachedInputTokens ?? 0)
-    },
-
-    usageCacheWriteEstimated(): boolean {
-      return !this.usageCacheWriteReported()
-    },
-
-    /**
-     * 推算值的解释放在悬浮里。
-     * 常驻说明文字没人看，还占掉半屏 —— 面板上只留一个 est. 角标。
-     */
-    usageCacheWriteTitle(): string {
-      if (this.usageCacheWriteReported())
-        return 'Tokens spent to build the cache — paid now, read back later'
-      return 'Estimated: this relay does not report cache_creation_input_tokens, so the figure shown is the '
-        + 'non-cached input for the window — those are the tokens that had to be written to cache.'
     },
 
     // ── 二次确认弹窗 ──
