@@ -6,11 +6,10 @@
  */
 import type { Alpine as AlpineType } from 'alpinejs'
 import type { ProviderType } from '../../server/data/defaults'
-import type { ModelTestErrorKind, ModelTestResult, ProtocolAttempt, ProtocolDetection } from '../../shared/modelTestTypes'
+import type { ModelTestResult, ProtocolAttempt, ProtocolDetection } from '../../shared/modelTestTypes'
 import type { ProtocolFamily, ProtocolFamilyOption } from '../../shared/providerProtocol'
 import type { UsageSummary } from '../../shared/usageTypes'
 import { isProviderType } from '../../server/data/defaults'
-import { MODEL_TEST_ERROR_HINT, MODEL_TEST_ERROR_LABEL } from '../../shared/modelTestTypes'
 import {
   buildRequestUrlPreview,
   checkBaseUrlShape,
@@ -21,6 +20,7 @@ import {
   PROTOCOL_FAMILY_OPTIONS,
   providerTypeOf,
 } from '../../shared/providerProtocol'
+import { clone, describeAttempt, errorHintFor, errorLabelFor, providersEqual, uid } from './valueComparison'
 
 declare function acquireVsCodeApi(): { postMessage: (msg: any) => void, getState: () => any, setState: (s: any) => void }
 
@@ -29,80 +29,6 @@ const vscode = acquireVsCodeApi()
 
 // debounce timer for catalog search
 let acTimer: ReturnType<typeof setTimeout> | null = null
-
-function uid(prefix: string) {
-  return `${prefix}-${Math.random().toString(36).slice(2, 8)}`
-}
-
-function clone<T>(v: T): T {
-  return JSON.parse(JSON.stringify(v))
-}
-
-function sortedRecord(value: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {}
-  for (const key of Object.keys(value).sort()) {
-    const v = value[key]
-    if (v !== undefined)
-      out[key] = canonicalValue(v)
-  }
-  return out
-}
-
-function canonicalValue(value: unknown): unknown {
-  if (Array.isArray(value))
-    return value.map(canonicalValue)
-  if (value && typeof value === 'object')
-    return sortedRecord(value as Record<string, unknown>)
-  return value
-}
-
-function canonicalProvider(provider: any): any {
-  if (!provider)
-    return {}
-  const headers = provider.headers && typeof provider.headers === 'object' && !Array.isArray(provider.headers)
-    ? sortedRecord(provider.headers)
-    : undefined
-  return {
-    id: provider.id,
-    name: provider.name ?? provider.id,
-    type: provider.type,
-    baseUrl: provider.baseUrl ?? '',
-    auth: canonicalValue(provider.auth ?? { kind: 'apiKey', value: '' }),
-    models: canonicalValue(Array.isArray(provider.models) ? provider.models : []),
-    ...(provider.proxyUrl ? { proxyUrl: provider.proxyUrl } : {}),
-    ...(headers && Object.keys(headers).length > 0 ? { headers } : {}),
-  }
-}
-
-function stableStringify(value: unknown): string {
-  return JSON.stringify(canonicalValue(value))
-}
-
-function providersEqual(a: any, b: any): boolean {
-  return stableStringify(canonicalProvider(a)) === stableStringify(canonicalProvider(b))
-}
-
-/**
- * store 上的字段是 any（Alpine proxy 无法静态推断），直接把 any 当索引去查
- * Record<ModelTestErrorKind, string> 会报隐式 any。这里集中做一次收窄与兜底，
- * 也顺便保证后端将来新增错误分类时 UI 不会显示 undefined。
- */
-function errorLabelFor(kind: unknown): string {
-  return MODEL_TEST_ERROR_LABEL[kind as ModelTestErrorKind] ?? MODEL_TEST_ERROR_LABEL.unknown
-}
-
-function errorHintFor(kind: unknown): string {
-  return MODEL_TEST_ERROR_HINT[kind as ModelTestErrorKind] ?? MODEL_TEST_ERROR_HINT.unknown
-}
-
-/** 探测时每种协议失败原因的简短描述 —— 全部打不通时拼给用户看 */
-function describeAttempt(result: ModelTestResult): string {
-  if (result.status === 'success')
-    return 'OK'
-  if (result.status === 'cancelled')
-    return 'Cancelled'
-  return errorLabelFor(result.errorKind)
-}
 
 export function initApp(Alpine: AlpineType) {
   // Alpine store 内 this 指向 proxy 对象, TS 无法推断 — 用 any 绕过
