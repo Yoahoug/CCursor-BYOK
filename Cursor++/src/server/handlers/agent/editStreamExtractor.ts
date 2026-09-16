@@ -22,11 +22,30 @@ const EDIT_TARGET_FIELD: Record<string, string> = {
  *
  * 两个字段名各编译一份，与原先「按 pathKey 构造正则」的语义**逐字等价**：
  * 只看目标字段，不会被同一条 JSON 里另一个字段抢先命中。
+ *
+ * 其中的 `\s*` 后面紧跟字面量 `:`，字符集不相交，不构成共享量词，无需豁免。
  */
 const PATH_VALUE_PATTERNS: Record<string, RegExp> = {
   path: /"path"\s*:\s*"((?:\\.|[^"\\])*)"/,
   target_notebook: /"target_notebook"\s*:\s*"((?:\\.|[^"\\])*)"/,
 }
+
+/**
+ * patch header 里的目标文件名。
+ *
+ * **刻意保持 `\s+` 原样** —— 曾被改成 `[^\S\n]+`（形状上更像安全的写法），
+ * 但那会**收窄接受的语言**：`\s` 含 `\n`，所以 `File:` 后面直接换行时原写法
+ * 仍能匹配到下一行的路径，改后则整体不匹配。400k 条结构感知随机输入里
+ * 两者在消费点（`p[1].trim()`）上有 53428 条不同，全部是「原来能取到路径、
+ * 改后取不到」。
+ *
+ * 保留 `\s+` 的性能代价也确实存在，但实测**改不改一样**（8192 空格的最坏
+ * 输入：原 17.07ms / 改 16.49ms，同量级），说明真正的开销来自 `(.+?)` 的
+ * 线性回溯而非 `\s` 的重叠，所以这次改动**只带来回归、不带来收益**。
+ * 输入又是模型自己流出的 tool_use 参数（不是不可信文件内容），
+ * 因此选择保留原语义并在此局部豁免该规则。
+ */
+// eslint-disable-next-line regexp/no-super-linear-backtracking -- 见上：改法会收窄接受语言且无性能收益
 const PATCH_FILE_HEADER_PATTERN = /\*\*\*\s+(?:Update|Add|Delete)\s+File:\s+(.+?)(?:\\n|\n)/
 
 export function detectEditPathFromToolInput(toolName: string, rawInput: string): string {
@@ -105,49 +124,79 @@ export class EditDeltaExtractor {
       this.detectedPath = detectEditPathFromToolInput(this.toolName, this.buf)
     if (this.state === 'DONE')
       return null
+
     let out = ''
     for (let i = 0; i < delta.length; i++) {
       const c = delta[i]
+
       if (this.esc) {
-        this.esc = false; if (this.state === 'IN_VAL')
-          out += decodeEscape(c); else if (this.state === 'IN_KEY')
-          this.key += c; continue
-      }
-      switch (this.state) {
-        case 'SCAN': if (c === '"') { this.state = 'IN_KEY'; this.key = '' } break
-        case 'IN_KEY': if (c === '\\') { this.esc = true }
-        else if (c === '"') {
-          this.state = 'COLON'
-        }
-        else {
+        this.esc = false
+        if (this.state === 'IN_VAL')
+          out += decodeEscape(c)
+        else if (this.state === 'IN_KEY')
           this.key += c
-        } break
-        case 'COLON': if (c === ':' || c === ' ' || c === '\t')
-          break; if (c === '"')
-            this.state = this.key === this.target ? 'IN_VAL' : 'SKIP_VAL'; else this.state = 'SCAN'; break
-        case 'IN_VAL': if (c === '\\') {
-          if (i + 1 < delta.length) { out += decodeEscape(delta[++i]) }
-          else {
-            this.esc = true
-          }
-        }
-        else if (c === '"') {
-          this.state = 'DONE'
-        }
-        else {
-          out += c
-        } break
-        case 'SKIP_VAL': if (c === '\\') {
-          if (i + 1 < delta.length)
-            i++; else this.esc = true
-        }
-        else if (c === '"') {
-          this.state = 'SCAN'
-        } break
+        continue
       }
+
+      switch (this.state) {
+        case 'SCAN':
+          if (c === '"') {
+            this.state = 'IN_KEY'
+            this.key = ''
+          }
+          break
+
+        case 'IN_KEY':
+          if (c === '\\')
+            this.esc = true
+          else if (c === '"')
+            this.state = 'COLON'
+          else
+            this.key += c
+          break
+
+        case 'COLON':
+          if (c === ':' || c === ' ' || c === '\t')
+            break
+          if (c === '"')
+            this.state = this.key === this.target ? 'IN_VAL' : 'SKIP_VAL'
+          else
+            this.state = 'SCAN'
+          break
+
+        case 'IN_VAL':
+          if (c === '\\') {
+            // 转义序列可能被切成两个 chunk，末尾的孤立反斜杠留到下一轮
+            if (i + 1 < delta.length)
+              out += decodeEscape(delta[++i])
+            else
+              this.esc = true
+          }
+          else if (c === '"') {
+            this.state = 'DONE'
+          }
+          else {
+            out += c
+          }
+          break
+
+        case 'SKIP_VAL':
+          if (c === '\\') {
+            if (i + 1 < delta.length)
+              i++
+            else
+              this.esc = true
+          }
+          else if (c === '"') {
+            this.state = 'SCAN'
+          }
+          break
+      }
+
       if (this.state === 'DONE')
         break
     }
+
     const normalizedOut = this.normalizeOutputDelta(out, this.state === 'DONE')
     return normalizedOut || null
   }
