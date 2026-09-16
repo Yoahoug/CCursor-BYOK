@@ -12,6 +12,26 @@ export interface ProviderStateStrategy {
     flushToolResults(messages: LLMMessage[], pending: LLMToolResultBlock[]): void;
 }
 
+/**
+ * 各协议共用的 tool_result 构造 —— 四个协议的 `LLMToolResultBlock` 形状完全一致
+ * （差异在**如何编码成各家请求**，那部分由 conversationCodec 负责）。
+ * 原先 Anthropic 与 OpenAI/Gemini 两个策略各写了一份逐字相同的实现。
+ */
+function createToolResult(params: {
+    toolCallId: string;
+    toolName: string;
+    content: string;
+    isError: boolean;
+}): LLMToolResultBlock {
+    return {
+        type: 'tool_result',
+        toolUseId: params.toolCallId,
+        toolName: params.toolName,
+        content: params.content,
+        ...(params.isError ? { isError: true } : {}),
+    };
+}
+
 function getTrailingAssistantToolUseOrder(messages: LLMMessage[]): string[] {
     const lastAssistant = [...messages].reverse().find(message => message.role === 'assistant');
     if (!lastAssistant || typeof lastAssistant.content === 'string') {
@@ -50,20 +70,7 @@ function reorderAnthropicToolResults(messages: LLMMessage[], pending: LLMToolRes
 class AnthropicStateStrategy implements ProviderStateStrategy {
     readonly name = 'anthropic';
 
-    createToolResult(params: {
-        toolCallId: string;
-        toolName: string;
-        content: string;
-        isError: boolean;
-    }): LLMToolResultBlock {
-        return {
-            type: 'tool_result',
-            toolUseId: params.toolCallId,
-            toolName: params.toolName,
-            content: params.content,
-            ...(params.isError ? { isError: true } : {}),
-        };
-    }
+    createToolResult = createToolResult;
 
     addToolResult(_messages: LLMMessage[], pending: LLMToolResultBlock[], result: LLMToolResultBlock): void {
         pending.push(result);
@@ -71,6 +78,7 @@ class AnthropicStateStrategy implements ProviderStateStrategy {
 
     flushToolResults(messages: LLMMessage[], pending: LLMToolResultBlock[]): void {
         if (pending.length === 0) return;
+        // Anthropic 要求 tool_result 的顺序与 assistant 里 tool_use 的出现顺序一致
         const reordered = reorderAnthropicToolResults(messages, pending);
         pending.splice(0, pending.length);
         for (const result of reordered) {
@@ -88,20 +96,7 @@ class AnthropicStateStrategy implements ProviderStateStrategy {
 class ToolRoleStateStrategy implements ProviderStateStrategy {
     constructor(readonly name: string) {}
 
-    createToolResult(params: {
-        toolCallId: string;
-        toolName: string;
-        content: string;
-        isError: boolean;
-    }): LLMToolResultBlock {
-        return {
-            type: 'tool_result',
-            toolUseId: params.toolCallId,
-            toolName: params.toolName,
-            content: params.content,
-            ...(params.isError ? { isError: true } : {}),
-        };
-    }
+    createToolResult = createToolResult;
 
     addToolResult(_messages: LLMMessage[], pending: LLMToolResultBlock[], result: LLMToolResultBlock): void {
         pending.push(result);
@@ -109,6 +104,7 @@ class ToolRoleStateStrategy implements ProviderStateStrategy {
 
     flushToolResults(messages: LLMMessage[], pending: LLMToolResultBlock[]): void {
         if (pending.length === 0) return;
+        // OpenAI/Gemini 接受任意顺序: tool 结果按产生顺序原样下发
         for (const result of pending) {
             messages.push({
                 role: 'tool',

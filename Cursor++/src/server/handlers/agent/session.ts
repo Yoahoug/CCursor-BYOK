@@ -233,6 +233,11 @@ export async function waitForMessageMatching(
 
     return new Promise<Record<string, unknown> | null>((resolve) => {
         let resolved = false;
+        // 先声明再赋值：cleanup 同时引用这两个变量，而 cleanup 可能在
+        // timeoutMs == null（无定时器）且 listener 被同步触发的路径上、
+        // 早于它们完成初始化就被调用 —— 那时会撞上 const 的 TDZ。
+        let timer: ReturnType<typeof setTimeout> | null = null;
+        let listener: () => void = () => {};
 
         const cleanup = () => {
             resolved = true;
@@ -241,15 +246,17 @@ export async function waitForMessageMatching(
             session.listeners.delete(listener);
         };
 
-        const timer = timeoutMs == null ? null : setTimeout(() => {
-            if (resolved)
-                return;
-            cleanup();
-            logger.warn({ requestId: session.requestId, timeoutMs }, '[SESSION] waitForMessage timeout');
-            resolve(null);
-        }, timeoutMs);
+        if (timeoutMs != null) {
+            timer = setTimeout(() => {
+                if (resolved)
+                    return;
+                cleanup();
+                logger.warn({ requestId: session.requestId, timeoutMs }, '[SESSION] waitForMessage timeout');
+                resolve(null);
+            }, timeoutMs);
+        }
 
-        const listener = () => {
+        listener = () => {
             if (resolved)
                 return;
             const i = session.messages.findIndex(predicate);

@@ -166,6 +166,11 @@ function stringifyContent(content: LLMMessage['content']): string {
           return `[tool call] ${block.name} ${JSON.stringify(block.input)}`
         case 'image':
           return `[image:${block.mimeType}]`
+        // 联合类型当前是穷尽的，但返回值来自外部（历史 blob / 各协议编码），
+        // 多一种 block 就会让 map 回调隐式返回 undefined。显式给空串，
+        // 与下游 `.filter(Boolean)` 的既有结果一致。
+        default:
+          return ''
       }
     })
     .filter(Boolean)

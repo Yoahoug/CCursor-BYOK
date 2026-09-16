@@ -19,11 +19,23 @@ import { loadPersistedBlob, persistBlob } from '../../database/blobs';
 const blobCache = new Map<string, string>();
 
 /**
+ * 内存缓存上限。
+ *
+ * 一轮 agent run 里每个 blob 都是完整消息体（含工具结果，可达数百 KB），
+ * 而 Map 本身没有淘汰机制 —— 长会话下它就是无界增长。
+ * 触发式清理（写满才清）而不是定时器：不引入额外的生命周期管理，
+ * 且清理发生在写入路径上，天然与增长同步。
+ */
+const BLOB_CACHE_MAX_ENTRIES = 10_000;
+
+/**
  * 同步写内存缓存 + fire-and-forget 持久化到 DB。
  * 调用方无需 await，DB 失败仅记录日志不中断流程。
  */
 export function cacheBlob(blobId: string, blobData: string): void {
     blobCache.set(blobId, blobData);
+    if (blobCache.size > BLOB_CACHE_MAX_ENTRIES)
+        cleanupBlobCache(BLOB_CACHE_MAX_ENTRIES);
     persistBlob(blobId, blobData).catch(err => {
         logger.warn({ blobId, error: (err as Error).message }, '[SESSION] persistBlob failed (continuing)');
     });

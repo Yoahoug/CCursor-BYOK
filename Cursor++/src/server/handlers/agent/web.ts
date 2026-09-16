@@ -219,32 +219,41 @@ async function fetchBuiltin(url: string): Promise<{ url: string, markdown: strin
  * 对理解内容无用的元数据，让同样的字符预算能装下更多正文。
  */
 function formatDiscourseTopicJson(raw: string): string | null {
-  let parsed: any
+  let parsed: unknown
   try {
     parsed = JSON.parse(raw)
   }
   catch {
     return null
   }
-  const posts = parsed?.post_stream?.posts
+  if (!parsed || typeof parsed !== 'object')
+    return null
+
+  // 这是外部服务返回的 JSON：逐层守卫而不是断言，避免上游改结构时
+  // 在深层属性访问上抛 TypeError（那会被上层当成抓取失败）。
+  const topic = parsed as Record<string, unknown>
+  const postStream = topic.post_stream as Record<string, unknown> | undefined
+  const posts = postStream?.posts
   if (!Array.isArray(posts) || posts.length === 0)
     return null
 
-  const title = typeof parsed.title === 'string' ? parsed.title : ''
+  const title = typeof topic.title === 'string' ? topic.title : ''
   const lines: string[] = []
   if (title)
     lines.push(`# ${title}`, '')
 
-  for (const post of posts) {
+  for (const entry of posts) {
+    const post = entry as Record<string, unknown>
     const postNumber = post.post_number ?? '?'
-    const author = post.username || post.name || 'unknown'
+    const author = (typeof post.username === 'string' && post.username)
+      || (typeof post.name === 'string' && post.name)
+      || 'unknown'
     const createdAt = typeof post.created_at === 'string' ? post.created_at.slice(0, 10) : ''
     lines.push(`## #${postNumber} — ${author}${createdAt ? ` (${createdAt})` : ''}`)
 
     // `raw` 是作者原始 markdown，优先用它；老帖 / 已编辑帖可能只有 `cooked` HTML。
-    const body = typeof post.raw === 'string' && post.raw.trim()
-      ? post.raw
-      : stripHtmlToText(String(post.cooked ?? ''))
+    const rawBody = typeof post.raw === 'string' ? post.raw : ''
+    const body = rawBody.trim() ? rawBody : stripHtmlToText(String(post.cooked ?? ''))
     lines.push(body.trim(), '')
   }
 
