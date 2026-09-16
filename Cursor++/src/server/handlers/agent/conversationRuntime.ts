@@ -744,19 +744,25 @@ export async function* handleConversationRun(
               let input: Record<string, unknown> = {}
               try { input = JSON.parse(rawArgs) } catch {}
               if (EDIT_TOOL_NAMES.has(current.name)) {
+                // 同一个 streamContent 只统计一次。原先 stats / mixed /
+                // maxConsecutiveBlankLines 各调一次 editNewlineStats，而它内部要
+                // 跑两遍 replace、一遍 split、一遍 match —— 对一份 40KB 的
+                // 文件内容就是四倍的无谓开销，且每次都发生在 edit 工具调用的
+                // 收尾路径上。debug 级别不开启时对象字面量仍会被构造，省不掉。
+                const streamedStats = streamDiag ? editNewlineStats(streamDiag.streamContent) : undefined
                 logger.debug({
                   callId: event.id,
                   tool: current.name,
                   pathWasSentDuringStream: pathWasSent,
                   rawArgs: editNewlineStats(rawArgs),
                   targetFields: editToolTargetStats(current.name, input),
-                  streamedContent: streamDiag ? {
+                  streamedContent: streamDiag && streamedStats ? {
                     deltaCount: streamDiag.deltaCount,
-                    stats: editNewlineStats(streamDiag.streamContent),
+                    stats: streamedStats,
                     suspicious: {
                       hasCrCrLf: /\r\r\n/.test(streamDiag.streamContent),
-                      mixedLineEndings: editNewlineStats(streamDiag.streamContent).mixed,
-                      hasLargeBlankRun: editNewlineStats(streamDiag.streamContent).maxConsecutiveBlankLines >= 3,
+                      mixedLineEndings: streamedStats.mixed,
+                      hasLargeBlankRun: streamedStats.maxConsecutiveBlankLines >= 3,
                     },
                   } : undefined,
                 }, '[EDIT_NL] final edit tool arguments newline diagnostics')
