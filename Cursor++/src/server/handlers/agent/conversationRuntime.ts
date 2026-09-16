@@ -258,6 +258,7 @@ async function* performInlineAutoSummarize(params: {
 
   // 重建 compacted 后的 messages 数组供后续 round 使用
   const newMessages: LLMMessage[] = []
+  let undecodableBlobs = 0
   for (const blobId of artifacts.nextRootBlobIds) {
     const blobData = getCachedBlob(blobId)
     if (!blobData)
@@ -270,7 +271,15 @@ async function* performInlineAutoSummarize(params: {
           newMessages.push(restored)
       }
     }
-    catch {}
+    catch (error) {
+      // 压缩后的历史若有一条 blob 解不开，它会被静默跳过 —— 而表现只是
+      // 「模型好像忘了刚才说过的话」，从日志上完全看不出来。这里留痕。
+      undecodableBlobs++
+      logger.warn(
+        { conversationId: parsed.conversationId, blobId, error: (error as Error).message },
+        '[AGENT] auto-summarize: skipped undecodable root blob',
+      )
+    }
   }
   const repairDiagnostics = createRepairDiagnostics(newMessages.length)
   const repairedNewMessages = repairConversationHistory(newMessages, repairDiagnostics)
@@ -289,6 +298,8 @@ async function* performInlineAutoSummarize(params: {
     previousUsedTokens: usedTokensEstimate,
     newUsedTokens: compactedTokenDetails.usedTokens,
     newMessageCount: repairedNewMessages.length,
+    // 非 0 表示压缩后的历史有内容丢失，post-mortem 时这是唯一的线索
+    undecodableBlobs,
   }, '[AGENT] auto-summarize: compaction complete')
 
   return {

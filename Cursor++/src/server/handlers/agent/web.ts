@@ -21,15 +21,102 @@ const EXCLUDE_SELECTORS = [
 interface CacheEntry { markdown: string, url: string, expiresAt: number }
 const fetchCache = new Map<string, CacheEntry>()
 
+/**
+ * 私网 / 特殊用途 IPv4 段。
+ *
+ * 覆盖 127.0.0.0/8（整个回环段，不只是 127.0.0.1）、10/8、172.16/12、
+ * 192.168/16、169.254/16（链路本地）、0.0.0.0/8（"本机"）、以及
+ * 100.64/10（运营商级 NAT）。
+ */
+const PRIVATE_IPV4_PATTERN = /^(?:0\.|10\.|127\.|169\.254\.|192\.168\.|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|172\.(?:1[6-9]|2\d|3[01])\.)/
+
+/**
+ * 归一化主机名，使各种等价写法落到同一个可比较的形式。
+ *
+ * `new URL()` 会做一部分归一化（`0x7f000001` / `2130706433` / `127.1` 都会
+ * 变成 `127.0.0.1`），但**IPv6 会带着方括号返回**（`[::1]`），而尾点
+ * （`localhost.`）也会保留。原实现直接拿 hostname 与 `'::1'` 比较，
+ * 因此 `http://[::1]:8080/` 这类写法能整个绕过守卫。
+ */
+function normalizeHostname(hostname: string): string {
+  let host = hostname.toLowerCase()
+  if (host.startsWith('[') && host.endsWith(']'))
+    host = host.slice(1, -1)
+  // 根区的绝对写法（localhost.）与 localhost 是同一台机器
+  while (host.endsWith('.'))
+    host = host.slice(0, -1)
+  return host
+}
+
+/**
+ * 该主机名是否是一个 IPv4 字面量。
+ *
+ * 只有字面量才该参与网段判断 —— 原实现直接对 hostname 跑 `/^(10\.|127\.)/`，
+ * 于是 `10.example.com`、`127.example.org` 这类**普通域名**会被误判为内网。
+ * 真实 IP 字面量此时已被 URL 解析器归一到点分十进制，所以这里只需做形状校验。
+ */
+function isIpv4Literal(host: string): boolean {
+  const parts = host.split('.')
+  if (parts.length !== 4)
+    return false
+  return parts.every((part) => {
+    if (!/^\d{1,3}$/.test(part))
+      return false
+    const value = Number(part)
+    return value >= 0 && value <= 255
+  })
+}
+
+/**
+ * 把 IPv4-mapped IPv6（`::ffff:7f00:1`）还原成点分十进制。
+ *
+ * URL 解析器会把它规范成十六进制形式，因此 `::ffff:127.0.0.1` 看一眼
+ * 认不出是回环地址 —— 必须还原后再走同一套 IPv4 判断。
+ */
+function ipv4FromMappedIpv6(host: string): string | null {
+  // ::ffff:a.b.c.d 与 ::ffff:xxxx:xxxx 两种形态都会出现
+  const dotted = host.match(/(?:^|:)ffff:(\d{1,3}(?:\.\d{1,3}){3})$/)
+  if (dotted)
+    return dotted[1]
+  const hex = host.match(/(?:^|:)ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/)
+  if (!hex)
+    return null
+  const high = Number.parseInt(hex[1], 16)
+  const low = Number.parseInt(hex[2], 16)
+  return [high >> 8, high & 0xff, low >> 8, low & 0xff].join('.')
+}
+
+/** IPv6 里的私网 / 特殊用途段：回环、未指定、ULA(fc00::/7)、链路本地(fe80::/10) */
+function isPrivateIpv6(host: string): boolean {
+  if (host === '::1' || host === '::')
+    return true
+  // fc00::/7 → 首字节 fc 或 fd；fe80::/10 → fe80–febf
+  if (/^f[cd][0-9a-f]{0,2}:/.test(host))
+    return true
+  if (/^fe[89ab][0-9a-f]?:/.test(host))
+    return true
+  return false
+}
+
 function isValidUrl(url: string): boolean {
   try {
     const u = new URL(url)
     if (u.protocol !== 'http:' && u.protocol !== 'https:')
       return false
-    const host = u.hostname.toLowerCase()
-    if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '0.0.0.0')
+    const host = normalizeHostname(u.hostname)
+    if (!host)
       return false
-    if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(host))
+    if (host === 'localhost' || host === '0.0.0.0' || host === '::' || host === '::1')
+      return false
+    // 只有真正的 IPv4 字面量才做网段判断，避免把 10.example.com 这类域名误杀
+    if (isIpv4Literal(host)) {
+      if (PRIVATE_IPV4_PATTERN.test(host))
+        return false
+    }
+    const mappedIpv4 = ipv4FromMappedIpv6(host)
+    if (mappedIpv4 && isIpv4Literal(mappedIpv4) && PRIVATE_IPV4_PATTERN.test(mappedIpv4))
+      return false
+    if (isPrivateIpv6(host))
       return false
     return true
   }

@@ -211,7 +211,11 @@ export function lookupCanvasByKey(canvasKey: string): CanvasMeta | null {
       const meta = JSON.parse(readFileSync(metaPath, 'utf-8')) as CanvasMeta
       if (meta.canvasKey === canvasKey) return meta
     }
-    catch {}
+    catch (error) {
+      // 单个目录的 meta.json 损坏（写到一半被强杀 / 手工改坏）时跳过它，
+      // 但留一条日志：否则「key 明明存在却查不到」在日志上完全无迹可寻。
+      logger.warn({ entry, error: (error as Error).message }, '[CANVAS] skipped unreadable meta.json')
+    }
   }
   return null
 }
