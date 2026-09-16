@@ -1,5 +1,5 @@
 <p align="center">
-  English | <a href="README_CN.md">中文</a>
+  English | <a href="README_UPSTREAM_CN.md">中文</a>
 </p>
 
 <p align="center">

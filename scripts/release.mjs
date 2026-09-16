@@ -735,7 +735,7 @@ function buildReleaseNotes(version) {
     '',
     '**手动安装**（可选）：',
     `1. 下载下方 \`cursor2plus-${version}.vsix\``,
-    '2. 用 installer 安装，或按 README「方式三」解压覆盖扩展目录',
+    '2. 用 installer 安装，或解压 VSIX 覆盖扩展目录（见 README 的「安装」章节）',
     '',
     '> 本产物由本地构建，内含 macOS / Linux / Windows（x64 · arm64）全部原生模块。',
   ].join('\n')
