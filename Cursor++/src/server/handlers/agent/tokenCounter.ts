@@ -24,7 +24,8 @@ const COUNT_CACHE_LIMIT = 500
 const countCache = new Map<string, number>()
 
 export function countTokens(text: string): number {
-  if (!text) return 0
+  if (!text)
+    return 0
   const cached = countCache.get(text)
   if (cached !== undefined) {
     // 重新插入使其变成"最近使用"，实现 LRU 而非 FIFO
@@ -51,15 +52,15 @@ export function getTokenCountCacheSizeForTests(): number {
   return countCache.size
 }
 
-export type ContextCategory =
-  | 'system_prompt'
-  | 'tools'
-  | 'rules'
-  | 'skills'
-  | 'mcp'
-  | 'subagents'
-  | 'conversation'
-  | 'summarized_conversation'
+export type ContextCategory
+  = | 'system_prompt'
+    | 'tools'
+    | 'rules'
+    | 'skills'
+    | 'mcp'
+    | 'subagents'
+    | 'conversation'
+    | 'summarized_conversation'
 
 const CATEGORY_LABELS: Record<ContextCategory, string> = {
   system_prompt: 'System prompt',
@@ -80,7 +81,8 @@ export class ContextTokenTracker {
   }
 
   addText(category: ContextCategory, text: string): void {
-    if (text) this.add(category, countTokens(text))
+    if (text)
+      this.add(category, countTokens(text))
   }
 
   get(category: ContextCategory): number {

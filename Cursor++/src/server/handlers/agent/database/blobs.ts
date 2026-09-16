@@ -1,1 +1,1 @@
-export { persistBlob, loadPersistedBlob } from '../../../database/blobs';
+export { loadPersistedBlob, persistBlob } from '../../../database/blobs'

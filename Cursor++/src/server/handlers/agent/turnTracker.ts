@@ -1,5 +1,6 @@
-import { create, fromBinary, toBinary } from '@bufbuild/protobuf'
 import type { ToolCall, UserMessage } from '../../gen/agent_v1_pb'
+import type { ParsedRunRequest } from './protocol/types'
+import { create, fromBinary, toBinary } from '@bufbuild/protobuf'
 import {
   AgentMode,
   AssistantMessageSchema,
@@ -9,10 +10,9 @@ import {
   ThinkingMessageSchema,
   UserMessageSchema,
 } from '../../gen/agent_v1_pb'
-import type { ParsedRunRequest } from './protocol/types'
+import { logger } from '../../logger'
 import { encodeBinaryBlob } from './blob'
 import { getCachedBlob } from './blobStore'
-import { logger } from '../../logger'
 
 function resolveAgentMode(mode: string): AgentMode {
   const normalized = mode.replace('AGENT_MODE_', '').toLowerCase()

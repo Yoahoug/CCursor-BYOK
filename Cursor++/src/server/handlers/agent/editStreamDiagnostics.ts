@@ -31,10 +31,12 @@ export function editNewlineStats(text: string): EditNewlineStats {
       if (text[i + 1] === '\n') {
         crlf++
         i++
-      } else {
+      }
+      else {
         crOnly++
       }
-    } else if (ch === '\n') {
+    }
+    else if (ch === '\n') {
       lfOnly++
     }
   }
@@ -46,7 +48,8 @@ export function editNewlineStats(text: string): EditNewlineStats {
     if (line.trim().length === 0) {
       currentBlankRun++
       maxConsecutiveBlankLines = Math.max(maxConsecutiveBlankLines, currentBlankRun)
-    } else {
+    }
+    else {
       currentBlankRun = 0
     }
   }
@@ -67,10 +70,15 @@ export function editToolTargetStats(toolName: string, input: Record<string, unkn
   const stats: Record<string, EditNewlineStats> = {}
   const add = (key: string) => {
     const value = input[key]
-    if (typeof value === 'string') stats[key] = editNewlineStats(value)
+    if (typeof value === 'string')
+      stats[key] = editNewlineStats(value)
   }
-  if (toolName === 'Write') add('contents')
-  else if (toolName === 'ApplyPatch') add('patch')
+  if (toolName === 'Write') {
+    add('contents')
+  }
+  else if (toolName === 'ApplyPatch') {
+    add('patch')
+  }
   else {
     add('old_string')
     add('new_string')

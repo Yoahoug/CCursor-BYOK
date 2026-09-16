@@ -19,28 +19,29 @@
  *   { "role": "user", "content": "..." }
  *   { "role": "assistant", "content": [...] | "..." }
  */
-import type { LLMMessage, LLMContentBlock } from '../llm/types';
-import { logger } from '../../logger';
+import type { LLMContentBlock, LLMMessage } from '../llm/types'
+import { logger } from '../../logger'
 
 /** 从 blob JSON 解码为 LLMMessage */
 export function blobToMessage(blobData: Uint8Array): LLMMessage | null {
-    try {
-        const json = Buffer.from(blobData).toString('utf-8');
-        const obj = JSON.parse(json);
-        return {
-            role: obj.role,
-            content: obj.content,
-        };
-    } catch (e) {
-        logger.warn({ error: (e as Error).message }, '[SESSION] failed to decode blob to message');
-        return null;
+  try {
+    const json = Buffer.from(blobData).toString('utf-8')
+    const obj = JSON.parse(json)
+    return {
+      role: obj.role,
+      content: obj.content,
     }
+  }
+  catch (e) {
+    logger.warn({ error: (e as Error).message }, '[SESSION] failed to decode blob to message')
+    return null
+  }
 }
 
 /** 将 LLMMessage 编码为 blob data */
-export function messageToBlob(msg: { role: string; content: string | LLMContentBlock[] }): Uint8Array {
-    const json = JSON.stringify(msg);
-    return new TextEncoder().encode(json);
+export function messageToBlob(msg: { role: string, content: string | LLMContentBlock[] }): Uint8Array {
+  const json = JSON.stringify(msg)
+  return new TextEncoder().encode(json)
 }
 
 /**
@@ -50,13 +51,13 @@ export function messageToBlob(msg: { role: string; content: string | LLMContentB
  * @returns LLMMessage 数组
  */
 export function rebuildMessagesFromBlobs(blobs: Uint8Array[]): LLMMessage[] {
-    const messages: LLMMessage[] = [];
-    for (const blobData of blobs) {
-        const msg = blobToMessage(blobData);
-        if (msg) {
-            messages.push(msg);
-        }
+  const messages: LLMMessage[] = []
+  for (const blobData of blobs) {
+    const msg = blobToMessage(blobData)
+    if (msg) {
+      messages.push(msg)
     }
-    logger.debug({ count: messages.length, roles: messages.map(m => m.role) }, '[SESSION] rebuilt messages from blobs');
-    return messages;
+  }
+  logger.debug({ count: messages.length, roles: messages.map(m => m.role) }, '[SESSION] rebuilt messages from blobs')
+  return messages
 }

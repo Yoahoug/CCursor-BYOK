@@ -41,21 +41,21 @@
  *   updateTodos → 无 exec 通道 (Client 本地处理)
  */
 
-import { logger } from '../../logger';
-import type { EditPlan } from './toolkit/editPlans';
-import { buildRegisteredEditPlan, buildRegisteredExecArgs, findToolByAlias, findToolByCursorType } from './toolRegistry';
-import type { ToolExecBuildOptions } from './toolkit/types';
+import type { EditPlan } from './toolkit/editPlans'
+import type { ToolExecBuildOptions } from './toolkit/types'
+import { logger } from '../../logger'
+import { buildRegisteredEditPlan, buildRegisteredExecArgs, findToolByAlias, findToolByCursorType } from './toolRegistry'
 
 export interface AvailableMcpTool {
-    name: string;
-    providerIdentifier?: string;
-    toolName?: string;
-    /** 归属 server identifier — 回传 McpArgs.server_identifier,限定客户端工具查找范围 */
-    serverIdentifier?: string;
+  name: string
+  providerIdentifier?: string
+  toolName?: string
+  /** 归属 server identifier — 回传 McpArgs.server_identifier,限定客户端工具查找范围 */
+  serverIdentifier?: string
 }
 
 export interface AvailableDynamicBuiltinTool {
-    tool: string;
+  tool: string
 }
 
 /**
@@ -65,17 +65,17 @@ export interface AvailableDynamicBuiltinTool {
  * 但 proto 中定义的是 int32 enum。需要转换后才能正确序列化。
  */
 const TODO_STATUS_MAP: Record<string, number> = {
-    'TODO_STATUS_UNSPECIFIED': 0,
-    'TODO_STATUS_PENDING': 1,
-    'TODO_STATUS_IN_PROGRESS': 2,
-    'TODO_STATUS_COMPLETED': 3,
-    'TODO_STATUS_CANCELLED': 4,
-    // 新 lowercase 枚举（官方 Cursor 工具使用）
-    'pending': 1,
-    'in_progress': 2,
-    'completed': 3,
-    'cancelled': 4,
-};
+  TODO_STATUS_UNSPECIFIED: 0,
+  TODO_STATUS_PENDING: 1,
+  TODO_STATUS_IN_PROGRESS: 2,
+  TODO_STATUS_COMPLETED: 3,
+  TODO_STATUS_CANCELLED: 4,
+  // 新 lowercase 枚举（官方 Cursor 工具使用）
+  pending: 1,
+  in_progress: 2,
+  completed: 3,
+  cancelled: 4,
+}
 
 /**
  * 将 LLM tool_use input 中的字符串枚举转换为 proto 兼容的 int32
@@ -84,18 +84,18 @@ const TODO_STATUS_MAP: Record<string, number> = {
  *   - TodoItem.status: "TODO_STATUS_PENDING" → 1
  */
 export function sanitizeToolInput(toolName: string, input: Record<string, unknown>): Record<string, unknown> {
-    if (toolName === 'TodoWrite' && Array.isArray(input.todos)) {
-        return {
-            ...input,
-            todos: (input.todos as Array<Record<string, unknown>>).map(todo => ({
-                ...todo,
-                status: typeof todo.status === 'string'
-                    ? (TODO_STATUS_MAP[todo.status] ?? 0)
-                    : todo.status,
-            })),
-        };
+  if (toolName === 'TodoWrite' && Array.isArray(input.todos)) {
+    return {
+      ...input,
+      todos: (input.todos as Array<Record<string, unknown>>).map(todo => ({
+        ...todo,
+        status: typeof todo.status === 'string'
+          ? (TODO_STATUS_MAP[todo.status] ?? 0)
+          : todo.status,
+      })),
     }
-    return input;
+  }
+  return input
 }
 
 // extractToolResult 已移除 — 被 toolkit/results/* 的分模块实现完全替代。
@@ -104,9 +104,9 @@ export function sanitizeToolInput(toolName: string, input: Record<string, unknow
 
 /** LLM tool_use block → Cursor tool 类型映射 */
 export interface ToolCallInfo {
-    callId: string;
-    name: string;
-    input: Record<string, unknown>;
+  callId: string
+  name: string
+  input: Record<string, unknown>
 }
 
 /**
@@ -121,27 +121,29 @@ export interface ToolCallInfo {
  *   askQuestionToolCall, taskToolCall, mcpToolCall, updateTodosToolCall
  */
 /** 解析 Claude/MCP 生态常见的扁平名 mcp__<server>__<tool>。 */
-export function parseFlatMcpToolName(name: string): { server: string; toolName: string } | null {
-    if (!name.startsWith('mcp__')) return null;
-    const parts = name.split('__');
-    if (parts.length < 3) return null;
-    const server = parts[1];
-    const toolName = parts.slice(2).join('__');
-    return server && toolName ? { server, toolName } : null;
+export function parseFlatMcpToolName(name: string): { server: string, toolName: string } | null {
+  if (!name.startsWith('mcp__'))
+    return null
+  const parts = name.split('__')
+  if (parts.length < 3)
+    return null
+  const server = parts[1]
+  const toolName = parts.slice(2).join('__')
+  return server && toolName ? { server, toolName } : null
 }
 
 function resolveFlatMcpTool(
-    parsed: { server: string; toolName: string },
-    availableMcpTools: AvailableMcpTool[],
+  parsed: { server: string, toolName: string },
+  availableMcpTools: AvailableMcpTool[],
 ): AvailableMcpTool | undefined {
-    return availableMcpTools.find(tool =>
-        tool.toolName === parsed.toolName
-        && (tool.serverIdentifier === parsed.server || tool.providerIdentifier === parsed.server));
+  return availableMcpTools.find(tool =>
+    tool.toolName === parsed.toolName
+    && (tool.serverIdentifier === parsed.server || tool.providerIdentifier === parsed.server))
 }
 
 export function mapToolName(llmToolName: string): string {
-    return findToolByAlias(llmToolName)?.cursorToolType
-        ?? (parseFlatMcpToolName(llmToolName) ? 'mcpToolCall' : llmToolName);
+  return findToolByAlias(llmToolName)?.cursorToolType
+    ?? (parseFlatMcpToolName(llmToolName) ? 'mcpToolCall' : llmToolName)
 }
 
 /**
@@ -167,9 +169,11 @@ export function mapToolName(llmToolName: string): string {
  * 不存在歧义,预告帧照发。
  */
 export function mapPartialToolName(llmToolName: string): string | null {
-    if (isDynamicInvokeToolName(llmToolName)) return null;
-    if (llmToolName.startsWith('user-')) return 'mcpToolCall';
-    return mapToolName(llmToolName);
+  if (isDynamicInvokeToolName(llmToolName))
+    return null
+  if (llmToolName.startsWith('user-'))
+    return 'mcpToolCall'
+  return mapToolName(llmToolName)
 }
 
 /**
@@ -180,23 +184,23 @@ export function mapPartialToolName(llmToolName: string): string | null {
  * 避免会话中途升级时正在进行的调用失配。
  */
 const DYNAMIC_INVOKE_ALIASES = new Set([
-    'CallDynamicTool',
-    'call_dynamic_tool',
-    'CallMcpTool',
-    'call_mcp_tool',
-]);
+  'CallDynamicTool',
+  'call_dynamic_tool',
+  'CallMcpTool',
+  'call_mcp_tool',
+])
 
 export function isDynamicInvokeToolName(llmToolName: string): boolean {
-    return DYNAMIC_INVOKE_ALIASES.has(llmToolName);
+  return DYNAMIC_INVOKE_ALIASES.has(llmToolName)
 }
 
 export interface DynamicInvokeTarget {
-    /** 官方用 serverIdentifier (如 user-ida-pro-mcp);保留 cursor 作为内置保留字 */
-    namespace: string;
-    toolName: string;
-    args: Record<string, unknown>;
-    /** arguments 存在但不是 JSON object —— 官方 schema 要求 object,须拒绝 */
-    invalidArgs: boolean;
+  /** 官方用 serverIdentifier (如 user-ida-pro-mcp);保留 cursor 作为内置保留字 */
+  namespace: string
+  toolName: string
+  args: Record<string, unknown>
+  /** arguments 存在但不是 JSON object —— 官方 schema 要求 object,须拒绝 */
+  invalidArgs: boolean
 }
 
 /**
@@ -206,21 +210,22 @@ export interface DynamicInvokeTarget {
  * snake_case 变体、以及本项目早期的 server/args。
  */
 export function parseDynamicInvoke(
-    llmToolName: string,
-    input: Record<string, unknown>,
+  llmToolName: string,
+  input: Record<string, unknown>,
 ): DynamicInvokeTarget | null {
-    if (!isDynamicInvokeToolName(llmToolName)) return null;
-    const rawArgs = input.arguments ?? input.args;
-    const invalidArgs = rawArgs !== undefined
-        && (rawArgs === null || typeof rawArgs !== 'object' || Array.isArray(rawArgs));
-    return {
-        namespace: String(input.namespace ?? input.server ?? ''),
-        toolName: String(input.toolName ?? input.tool_name ?? ''),
-        args: !invalidArgs && rawArgs && typeof rawArgs === 'object'
-            ? rawArgs as Record<string, unknown>
-            : {},
-        invalidArgs,
-    };
+  if (!isDynamicInvokeToolName(llmToolName))
+    return null
+  const rawArgs = input.arguments ?? input.args
+  const invalidArgs = rawArgs !== undefined
+    && (rawArgs === null || typeof rawArgs !== 'object' || Array.isArray(rawArgs))
+  return {
+    namespace: String(input.namespace ?? input.server ?? ''),
+    toolName: String(input.toolName ?? input.tool_name ?? ''),
+    args: !invalidArgs && rawArgs && typeof rawArgs === 'object'
+      ? rawArgs as Record<string, unknown>
+      : {},
+    invalidArgs,
+  }
 }
 
 /**
@@ -235,16 +240,16 @@ export function parseDynamicInvoke(
  * resolutionError 把错误反馈给 LLM,而不是在这里静默当成原生工具启动。
  */
 export function resolveExecutionToolName(
-    llmToolName: string,
-    input: Record<string, unknown>,
-    availableDynamicBuiltinTools: AvailableDynamicBuiltinTool[] = [],
+  llmToolName: string,
+  input: Record<string, unknown>,
+  availableDynamicBuiltinTools: AvailableDynamicBuiltinTool[] = [],
 ): string {
-    const target = parseDynamicInvoke(llmToolName, input);
-    if (!target || target.namespace !== 'cursor' || target.invalidArgs)
-        return llmToolName;
-    return availableDynamicBuiltinTools.some(tool => tool.tool === target.toolName)
-        ? target.toolName
-        : llmToolName;
+  const target = parseDynamicInvoke(llmToolName, input)
+  if (!target || target.namespace !== 'cursor' || target.invalidArgs)
+    return llmToolName
+  return availableDynamicBuiltinTools.some(tool => tool.tool === target.toolName)
+    ? target.toolName
+    : llmToolName
 }
 
 /**
@@ -253,7 +258,7 @@ export function resolveExecutionToolName(
  * 返回 null 表示该工具无需 exec 通道 (Server 端或 Client 本地处理)
  */
 export function mapToolToExecArgs(cursorToolType: string): string | null {
-    return findToolByCursorType(cursorToolType)?.execArgsType ?? null;
+  return findToolByCursorType(cursorToolType)?.execArgsType ?? null
 }
 
 /**
@@ -262,173 +267,174 @@ export function mapToolToExecArgs(cursorToolType: string): string | null {
  * 按 LLM 工具名（alias）查找构建函数，生成 Cursor 协议的 exec args。
  */
 export function buildExecArgs(
-    llmToolName: string,
-    input: Record<string, unknown>,
-    callId: string,
-    options: ToolExecBuildOptions = {},
+  llmToolName: string,
+  input: Record<string, unknown>,
+  callId: string,
+  options: ToolExecBuildOptions = {},
 ): Record<string, unknown> {
-    const registered = buildRegisteredExecArgs(llmToolName, input, callId, options);
-    if (registered) return registered;
-    logger.warn({ llmToolName }, '[TOOL] unknown tool name for exec args');
-    return { toolCallId: callId };
+  const registered = buildRegisteredExecArgs(llmToolName, input, callId, options)
+  if (registered)
+    return registered
+  logger.warn({ llmToolName }, '[TOOL] unknown tool name for exec args')
+  return { toolCallId: callId }
 }
 
 export function buildEditPlan(
-    llmToolName: string,
-    input: Record<string, unknown>,
-    callId: string,
-    options: ToolExecBuildOptions = {},
+  llmToolName: string,
+  input: Record<string, unknown>,
+  callId: string,
+  options: ToolExecBuildOptions = {},
 ): EditPlan {
-    const plan = buildRegisteredEditPlan(llmToolName, input, callId, options);
-    if (plan) return plan;
-    throw new Error(`Tool ${llmToolName} does not support edit plans`);
+  const plan = buildRegisteredEditPlan(llmToolName, input, callId, options)
+  if (plan)
+    return plan
+  throw new Error(`Tool ${llmToolName} does not support edit plans`)
 }
 
 export function resolveToolCall(
-    llmToolName: string,
-    input: Record<string, unknown>,
-    availableMcpTools: AvailableMcpTool[] = [],
-    availableDynamicBuiltinTools: AvailableDynamicBuiltinTool[] = [],
+  llmToolName: string,
+  input: Record<string, unknown>,
+  availableMcpTools: AvailableMcpTool[] = [],
+  availableDynamicBuiltinTools: AvailableDynamicBuiltinTool[] = [],
 ): {
-    cursorToolType: string
-    sanitizedInput: Record<string, unknown>
-    effectiveToolName?: string
-    resolutionError?: string
+  cursorToolType: string
+  sanitizedInput: Record<string, unknown>
+  effectiveToolName?: string
+  resolutionError?: string
 } {
-    const sanitizedInput = sanitizeToolInput(llmToolName, input);
+  const sanitizedInput = sanitizeToolInput(llmToolName, input)
 
-    // dynamic namespace 模式: LLM 直接调 CallDynamicTool,自带
-    // namespace + toolName + arguments (官方 LLM 侧参数名,实测 3.15.6)。
-    // 这里把它映射成 McpArgs 需要的路由字段。
-    //
-    // namespace 的值官方用的是 serverIdentifier (如 user-ida-pro-mcp) ——
-    // <dynamic_tools> 段里的 name 属性就是它。但也接受 serverName,
-    // 因为 LLM 可能从 mcp_instructions 等处读到展示名。
-    //
-    // 解包走 parseDynamicInvoke —— 与 resolveExecutionToolName 共用,
-    // 保证"分流判据"与"执行判据"永远一致。
-    const dynamicInvoke = parseDynamicInvoke(llmToolName, input);
-    if (dynamicInvoke) {
-        const { namespace: server, toolName, args, invalidArgs: hasInvalidArgs } = dynamicInvoke;
+  // dynamic namespace 模式: LLM 直接调 CallDynamicTool,自带
+  // namespace + toolName + arguments (官方 LLM 侧参数名,实测 3.15.6)。
+  // 这里把它映射成 McpArgs 需要的路由字段。
+  //
+  // namespace 的值官方用的是 serverIdentifier (如 user-ida-pro-mcp) ——
+  // <dynamic_tools> 段里的 name 属性就是它。但也接受 serverName,
+  // 因为 LLM 可能从 mcp_instructions 等处读到展示名。
+  //
+  // 解包走 parseDynamicInvoke —— 与 resolveExecutionToolName 共用,
+  // 保证"分流判据"与"执行判据"永远一致。
+  const dynamicInvoke = parseDynamicInvoke(llmToolName, input)
+  if (dynamicInvoke) {
+    const { namespace: server, toolName, args, invalidArgs: hasInvalidArgs } = dynamicInvoke
 
-        if (server === 'cursor') {
-            if (hasInvalidArgs) {
-                return {
-                    cursorToolType: 'mcpToolCall',
-                    sanitizedInput: {
-                        name: `cursor-${toolName}`,
-                        args: {},
-                        providerIdentifier: 'cursor',
-                        toolName,
-                        serverIdentifier: 'cursor',
-                    },
-                    resolutionError: 'CallDynamicTool.arguments must be a JSON object.',
-                };
-            }
-            const matchedBuiltin = availableDynamicBuiltinTools.find(tool => tool.tool === toolName);
-            if (!matchedBuiltin) {
-                logger.warn({
-                    llmToolName,
-                    namespace: server,
-                    toolName,
-                    knownDynamicBuiltins: availableDynamicBuiltinTools.map(tool => tool.tool),
-                }, '[DYNAMIC-TOOLS] cursor tool not in dynamic registry');
-                return {
-                    cursorToolType: 'mcpToolCall',
-                    sanitizedInput: {
-                        name: `cursor-${toolName}`,
-                        args,
-                        providerIdentifier: 'cursor',
-                        toolName,
-                        serverIdentifier: 'cursor',
-                    },
-                    resolutionError: `Tool "${toolName}" was not found in namespace "cursor". Discover it with GetDynamicTools before invoking it.`,
-                };
-            }
-            const cursorToolType = mapToolName(toolName);
-            logger.debug({ llmToolName, namespace: server, toolName, cursorToolType },
-                '[DYNAMIC-TOOLS] cursor native tool routed');
-            return {
-                cursorToolType,
-                sanitizedInput: sanitizeToolInput(toolName, args),
-                effectiveToolName: toolName,
-            };
-        }
-
-        const matched = availableMcpTools.find(t =>
-            t.toolName === toolName
-            && (t.serverIdentifier === server || t.providerIdentifier === server));
-        // 路由结果直接决定 McpArgs 发给哪个 server。matched=false 时走的是
-        // "按 LLM 给的字面量硬发"这条兜底路径 —— 客户端很可能报 tool not found,
-        // 所以单独记一条,便于把"名字对不上"和"MCP server 本身故障"区分开。
-        logger[matched ? 'debug' : 'warn']({
-            llmToolName,
-            namespace: server,
+    if (server === 'cursor') {
+      if (hasInvalidArgs) {
+        return {
+          cursorToolType: 'mcpToolCall',
+          sanitizedInput: {
+            name: `cursor-${toolName}`,
+            args: {},
+            providerIdentifier: 'cursor',
             toolName,
-            argKeys: Object.keys(args),
-            routed: matched
-                ? { name: matched.name, serverIdentifier: matched.serverIdentifier }
-                : null,
-            knownMcpTools: matched ? undefined : availableMcpTools.length,
-        }, matched
-            ? '[DYNAMIC-TOOLS] CallDynamicTool routed'
-            : '[DYNAMIC-TOOLS] CallDynamicTool not in routing table — forwarding as-is');
-        // 未匹配到也照发 —— 客户端 callTool 以 toolName 为准,serverIdentifier 仅作过滤器;
-        // 宁可让客户端报 "tool not found",也好过我们这里静默吞掉调用。
+            serverIdentifier: 'cursor',
+          },
+          resolutionError: 'CallDynamicTool.arguments must be a JSON object.',
+        }
+      }
+      const matchedBuiltin = availableDynamicBuiltinTools.find(tool => tool.tool === toolName)
+      if (!matchedBuiltin) {
+        logger.warn({
+          llmToolName,
+          namespace: server,
+          toolName,
+          knownDynamicBuiltins: availableDynamicBuiltinTools.map(tool => tool.tool),
+        }, '[DYNAMIC-TOOLS] cursor tool not in dynamic registry')
         return {
-            cursorToolType: 'mcpToolCall',
-            sanitizedInput: {
-                name: matched?.name ?? (server ? `${server}-${toolName}` : toolName),
-                args,
-                providerIdentifier: matched?.providerIdentifier ?? server,
-                toolName,
-                serverIdentifier: matched?.serverIdentifier ?? server,
-            },
-        };
+          cursorToolType: 'mcpToolCall',
+          sanitizedInput: {
+            name: `cursor-${toolName}`,
+            args,
+            providerIdentifier: 'cursor',
+            toolName,
+            serverIdentifier: 'cursor',
+          },
+          resolutionError: `Tool "${toolName}" was not found in namespace "cursor". Discover it with GetDynamicTools before invoking it.`,
+        }
+      }
+      const cursorToolType = mapToolName(toolName)
+      logger.debug({ llmToolName, namespace: server, toolName, cursorToolType }, '[DYNAMIC-TOOLS] cursor native tool routed')
+      return {
+        cursorToolType,
+        sanitizedInput: sanitizeToolInput(toolName, args),
+        effectiveToolName: toolName,
+      }
     }
 
-    const descriptor = availableMcpTools.find(tool => tool.name === llmToolName);
-
-    if (descriptor && (descriptor.providerIdentifier || descriptor.toolName)) {
-        return {
-            cursorToolType: 'mcpToolCall',
-            sanitizedInput: {
-                name: llmToolName,
-                args: sanitizedInput,
-                providerIdentifier: descriptor.providerIdentifier ?? '',
-                toolName: descriptor.toolName ?? '',
-                serverIdentifier: descriptor.serverIdentifier ?? '',
-            },
-        };
-    }
-
-    // Dynamic profile 正常情况下不会走到这里;保留这条防御路径处理模型根据
-    // Claude Code 训练惯例发出的 mcp__server__tool 名称。仍由客户端执行审批。
-    const flat = parseFlatMcpToolName(llmToolName);
-    if (flat) {
-        const matched = resolveFlatMcpTool(flat, availableMcpTools);
-        logger[matched ? 'debug' : 'warn']({
-            llmToolName,
-            server: flat.server,
-            toolName: flat.toolName,
-            routed: matched?.name ?? null,
-        }, matched
-            ? '[DYNAMIC-TOOLS] flat MCP name routed'
-            : '[DYNAMIC-TOOLS] flat MCP name not in routing table — forwarding parsed values');
-        return {
-            cursorToolType: 'mcpToolCall',
-            sanitizedInput: {
-                name: matched?.name ?? llmToolName,
-                args: sanitizedInput,
-                providerIdentifier: matched?.providerIdentifier ?? flat.server,
-                toolName: matched?.toolName ?? flat.toolName,
-                serverIdentifier: matched?.serverIdentifier ?? flat.server,
-            },
-        };
-    }
-
+    const matched = availableMcpTools.find(t =>
+      t.toolName === toolName
+      && (t.serverIdentifier === server || t.providerIdentifier === server))
+    // 路由结果直接决定 McpArgs 发给哪个 server。matched=false 时走的是
+    // "按 LLM 给的字面量硬发"这条兜底路径 —— 客户端很可能报 tool not found,
+    // 所以单独记一条,便于把"名字对不上"和"MCP server 本身故障"区分开。
+    logger[matched ? 'debug' : 'warn']({
+      llmToolName,
+      namespace: server,
+      toolName,
+      argKeys: Object.keys(args),
+      routed: matched
+        ? { name: matched.name, serverIdentifier: matched.serverIdentifier }
+        : null,
+      knownMcpTools: matched ? undefined : availableMcpTools.length,
+    }, matched
+      ? '[DYNAMIC-TOOLS] CallDynamicTool routed'
+      : '[DYNAMIC-TOOLS] CallDynamicTool not in routing table — forwarding as-is')
+    // 未匹配到也照发 —— 客户端 callTool 以 toolName 为准,serverIdentifier 仅作过滤器;
+    // 宁可让客户端报 "tool not found",也好过我们这里静默吞掉调用。
     return {
-        cursorToolType: mapToolName(llmToolName),
-        sanitizedInput,
-    };
+      cursorToolType: 'mcpToolCall',
+      sanitizedInput: {
+        name: matched?.name ?? (server ? `${server}-${toolName}` : toolName),
+        args,
+        providerIdentifier: matched?.providerIdentifier ?? server,
+        toolName,
+        serverIdentifier: matched?.serverIdentifier ?? server,
+      },
+    }
+  }
+
+  const descriptor = availableMcpTools.find(tool => tool.name === llmToolName)
+
+  if (descriptor && (descriptor.providerIdentifier || descriptor.toolName)) {
+    return {
+      cursorToolType: 'mcpToolCall',
+      sanitizedInput: {
+        name: llmToolName,
+        args: sanitizedInput,
+        providerIdentifier: descriptor.providerIdentifier ?? '',
+        toolName: descriptor.toolName ?? '',
+        serverIdentifier: descriptor.serverIdentifier ?? '',
+      },
+    }
+  }
+
+  // Dynamic profile 正常情况下不会走到这里;保留这条防御路径处理模型根据
+  // Claude Code 训练惯例发出的 mcp__server__tool 名称。仍由客户端执行审批。
+  const flat = parseFlatMcpToolName(llmToolName)
+  if (flat) {
+    const matched = resolveFlatMcpTool(flat, availableMcpTools)
+    logger[matched ? 'debug' : 'warn']({
+      llmToolName,
+      server: flat.server,
+      toolName: flat.toolName,
+      routed: matched?.name ?? null,
+    }, matched
+      ? '[DYNAMIC-TOOLS] flat MCP name routed'
+      : '[DYNAMIC-TOOLS] flat MCP name not in routing table — forwarding parsed values')
+    return {
+      cursorToolType: 'mcpToolCall',
+      sanitizedInput: {
+        name: matched?.name ?? llmToolName,
+        args: sanitizedInput,
+        providerIdentifier: matched?.providerIdentifier ?? flat.server,
+        toolName: matched?.toolName ?? flat.toolName,
+        serverIdentifier: matched?.serverIdentifier ?? flat.server,
+      },
+    }
+  }
+
+  return {
+    cursorToolType: mapToolName(llmToolName),
+    sanitizedInput,
+  }
 }

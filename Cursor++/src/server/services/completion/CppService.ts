@@ -12,11 +12,11 @@
  *   注意: 实际补全推理走 AiService.streamCpp → geoCppTransport (gcpp.cursor.sh)，
  *   CppService 仅处理配置和评估记录
  */
-import type { ConnectRouter } from '@connectrpc/connect';
-import { CppService } from '../../gen/aiserver_v1_pb';
+import type { ConnectRouter } from '@connectrpc/connect'
+import { CppService } from '../../gen/aiserver_v1_pb'
 
 export default (router: ConnectRouter) => {
-    router.service(CppService, {
-        availableModels: async () => ({ models: ['fast'], defaultModel: 'fast' }),
-    });
-};
+  router.service(CppService, {
+    availableModels: async () => ({ models: ['fast'], defaultModel: 'fast' }),
+  })
+}

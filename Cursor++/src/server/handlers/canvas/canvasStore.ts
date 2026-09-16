@@ -202,14 +202,17 @@ export function storeCanvas(params: {
 
 export function lookupCanvasByKey(canvasKey: string): CanvasMeta | null {
   const dir = getCanvasesDir()
-  if (!existsSync(dir)) return null
+  if (!existsSync(dir))
+    return null
   const { readdirSync } = require('node:fs') as typeof import('node:fs')
   for (const entry of readdirSync(dir)) {
     const metaPath = join(dir, entry, 'meta.json')
-    if (!existsSync(metaPath)) continue
+    if (!existsSync(metaPath))
+      continue
     try {
       const meta = JSON.parse(readFileSync(metaPath, 'utf-8')) as CanvasMeta
-      if (meta.canvasKey === canvasKey) return meta
+      if (meta.canvasKey === canvasKey)
+        return meta
     }
     catch (error) {
       // 单个目录的 meta.json 损坏（写到一半被强杀 / 手工改坏）时跳过它，

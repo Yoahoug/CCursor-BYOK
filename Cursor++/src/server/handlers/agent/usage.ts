@@ -1,28 +1,28 @@
-import type { LLMUsage } from '../llm/types';
+import type { LLMUsage } from '../llm/types'
 
 export interface UsageTotals {
-    inputTokens: number;
-    outputTokens: number;
-    cacheReadTokens: number;
-    cacheWriteTokens: number;
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
 }
 
 export function emptyUsageTotals(): UsageTotals {
-    return {
-        inputTokens: 0,
-        outputTokens: 0,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-    };
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+  }
 }
 
 export function addUsage(totals: UsageTotals, usage: LLMUsage): UsageTotals {
-    return {
-        inputTokens: totals.inputTokens + usage.inputTokens,
-        outputTokens: totals.outputTokens + usage.outputTokens,
-        cacheReadTokens: totals.cacheReadTokens + (usage.cacheReadTokens ?? 0),
-        cacheWriteTokens: totals.cacheWriteTokens + (usage.cacheWriteTokens ?? 0),
-    };
+  return {
+    inputTokens: totals.inputTokens + usage.inputTokens,
+    outputTokens: totals.outputTokens + usage.outputTokens,
+    cacheReadTokens: totals.cacheReadTokens + (usage.cacheReadTokens ?? 0),
+    cacheWriteTokens: totals.cacheWriteTokens + (usage.cacheWriteTokens ?? 0),
+  }
 }
 
 /**
@@ -33,20 +33,20 @@ export function addUsage(totals: UsageTotals, usage: LLMUsage): UsageTotals {
  * 两者相加 ≈ 下一轮的预期 inputTokens, 作为"下一轮上下文压力"的近似。
  */
 export function estimateContextTokens(usage: LLMUsage): number {
-    return Math.max(0, usage.inputTokens + usage.outputTokens);
+  return Math.max(0, usage.inputTokens + usage.outputTokens)
 }
 
-export function clampTokenDetails(usedTokens: number, maxTokens: number): { usedTokens: number; maxTokens: number } {
-    const safeMax = Math.max(1, maxTokens);
-    return {
-        usedTokens: Math.max(0, Math.min(usedTokens, safeMax)),
-        maxTokens: safeMax,
-    };
+export function clampTokenDetails(usedTokens: number, maxTokens: number): { usedTokens: number, maxTokens: number } {
+  const safeMax = Math.max(1, maxTokens)
+  return {
+    usedTokens: Math.max(0, Math.min(usedTokens, safeMax)),
+    maxTokens: safeMax,
+  }
 }
 
 export function computeContextUsagePercent(usedTokens: number, maxTokens: number): number {
-    const { usedTokens: safeUsed, maxTokens: safeMax } = clampTokenDetails(usedTokens, maxTokens);
-    return Number(((safeUsed / safeMax) * 100).toFixed(2));
+  const { usedTokens: safeUsed, maxTokens: safeMax } = clampTokenDetails(usedTokens, maxTokens)
+  return Number(((safeUsed / safeMax) * 100).toFixed(2))
 }
 
 /**
@@ -71,14 +71,14 @@ const AUTOCOMPACT_BUFFER_TOKENS = 20_000
 const MAX_OUTPUT_RESERVE = 20_000
 
 export function getAutoCompactThreshold(maxTokens: number, maxOutputTokens = 8192): number {
-    const outputReserve = Math.min(maxOutputTokens, MAX_OUTPUT_RESERVE)
-    const effective = maxTokens - outputReserve
-    return effective - AUTOCOMPACT_BUFFER_TOKENS
+  const outputReserve = Math.min(maxOutputTokens, MAX_OUTPUT_RESERVE)
+  const effective = maxTokens - outputReserve
+  return effective - AUTOCOMPACT_BUFFER_TOKENS
 }
 
 export function shouldTriggerCompaction(usedTokens: number, maxTokens: number, thresholdPercent?: number): boolean {
-    if (thresholdPercent !== undefined) {
-        return computeContextUsagePercent(usedTokens, maxTokens) >= thresholdPercent;
-    }
-    return usedTokens >= getAutoCompactThreshold(maxTokens);
+  if (thresholdPercent !== undefined) {
+    return computeContextUsagePercent(usedTokens, maxTokens) >= thresholdPercent
+  }
+  return usedTokens >= getAutoCompactThreshold(maxTokens)
 }

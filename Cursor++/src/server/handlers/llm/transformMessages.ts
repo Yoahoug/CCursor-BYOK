@@ -8,15 +8,15 @@
  *   4. 跨 provider thinking 降级
  */
 import type { ProviderType } from '../../data/defaults'
+import type { LLMContentBlock, LLMMessage } from './types'
 import { findToolByAlias, listBuiltinLlmTools } from '../agent/toolkit/registry'
 import { getProviderToolCatalog } from './toolCatalog'
-import type { LLMContentBlock, LLMMessage } from './types'
 
 // ── shortHash: 确定性短哈希 (对标 Pi utils/hash.ts) ──
 
 export function shortHash(str: string): string {
-  let h1 = 0xdeadbeef
-  let h2 = 0x41c6ce57
+  let h1 = 0xDEADBEEF
+  let h2 = 0x41C6CE57
   for (let i = 0; i < str.length; i++) {
     const ch = str.charCodeAt(i)
     h1 = Math.imul(h1 ^ ch, 2654435761)
@@ -30,7 +30,7 @@ export function shortHash(str: string): string {
 // ── Provider-specific ID normalizers ──
 
 function sanitizeId(id: string, maxLen = 64): string {
-  return id.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, maxLen).replace(/_+$/, '')
+  return id.replace(/[^\w-]/g, '_').slice(0, maxLen).replace(/_+$/, '')
 }
 
 export function normalizeToolCallIdForAnthropic(id: string): string {
@@ -293,7 +293,8 @@ function normalizeIdsAndThinking(messages: LLMMessage[], targetProvider: Provide
             if (targetProvider === 'openai-chat') {
               // OpenAI Chat 不支持 thinking 块 — 降级为 text
               signedThinkingDowngraded++
-              if (block.text) transformedContent.push({ type: 'text', text: block.text })
+              if (block.text)
+                transformedContent.push({ type: 'text', text: block.text })
             }
             else if (targetSourceModel && block.sourceModel && block.sourceModel !== targetSourceModel) {
               // 跨模型: signature 不兼容。目标分化:
@@ -303,7 +304,8 @@ function normalizeIdsAndThinking(messages: LLMMessage[], targetProvider: Provide
               //     (DeepSeek 等 Anthropic 兼容 API 要求 thinking 块必须回传)
               signedThinkingDowngraded++
               if (targetProvider === 'openai-responses') {
-                if (block.text) transformedContent.push({ type: 'text', text: block.text })
+                if (block.text)
+                  transformedContent.push({ type: 'text', text: block.text })
               }
               else {
                 transformedContent.push({ type: 'thinking', text: block.text ?? '', sourceModel: block.sourceModel })
@@ -313,7 +315,8 @@ function normalizeIdsAndThinking(messages: LLMMessage[], targetProvider: Provide
               // 无 sourceModel 但有 signature — 来源不明, 同样按目标分化处理
               signedThinkingDowngraded++
               if (targetProvider === 'openai-responses') {
-                if (block.text) transformedContent.push({ type: 'text', text: block.text })
+                if (block.text)
+                  transformedContent.push({ type: 'text', text: block.text })
               }
               else {
                 transformedContent.push({ type: 'thinking', text: block.text ?? '' })

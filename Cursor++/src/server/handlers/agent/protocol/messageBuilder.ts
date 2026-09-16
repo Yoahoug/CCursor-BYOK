@@ -1,14 +1,14 @@
-import type { LLMContentBlock, LLMMessage } from '../../llm/types'
 import type { ProviderPromptProfile } from '../../llm/promptProfile'
+import type { LLMContentBlock, LLMMessage } from '../../llm/types'
 import type { ParsedAgentSkill, ParsedRunRequest } from './types'
 import { resolvePromptProfile } from '../../llm/promptProfile'
+import { isAutoAttachedRule, ruleWorkspaceRoot } from '../contextCatalog'
+import { buildDynamicToolCatalogEntries, buildDynamicToolsSection } from '../dynamicTools'
 import { buildAnthropicSystemPrompt } from './prompts/anthropicSystem'
 import { buildComposerFallbackSystemPrompt } from './prompts/composerFallback'
 import { buildModeReminder } from './prompts/modeReminders'
 import { buildOpenAISystemPrompt } from './prompts/openaiSystem'
 import { escapeXml } from './shared'
-import { isAutoAttachedRule, ruleWorkspaceRoot } from '../contextCatalog'
-import { buildDynamicToolCatalogEntries, buildDynamicToolsSection } from '../dynamicTools'
 
 const SKILL_CATALOG_BUDGET_PERCENT = 0.02
 const DEFAULT_AGENT_TOKEN_LIMIT = 200_000
@@ -30,8 +30,12 @@ function skillName(fullPath: string): string {
 function skillDirectory(fullPath: string): string {
   const normalized = fullPath.replace(/\\/g, '/')
   const markers = [
-    '/.cursor/skills/', '/.cursor/skills-cursor/', '/.agents/skills/',
-    '/.claude/skills/', '/.codex/skills/', '/.claude/plugins/',
+    '/.cursor/skills/',
+    '/.cursor/skills-cursor/',
+    '/.agents/skills/',
+    '/.claude/skills/',
+    '/.codex/skills/',
+    '/.claude/plugins/',
   ]
   for (const marker of markers) {
     const index = normalized.indexOf(marker)
@@ -59,7 +63,7 @@ function renderAgentSkillsSection(
   skills: Array<{ fullPath: string, description?: string }>,
   omitted?: { count: number, directories: string[] },
 ): string {
-  const entries = skills.map(skill => {
+  const entries = skills.map((skill) => {
     const description = skill.description ? escapeXml(skill.description) : ''
     return `<agent_skill fullPath="${escapeXml(skill.fullPath)}">${description}</agent_skill>`
   })
@@ -461,7 +465,8 @@ ${body}
       for (const [path, content] of normalFileEntries) {
         if (content.length <= inlineThreshold) {
           section += `<attached_file path="${escapeXml(path)}">${escapeXml(content)}</attached_file>\n`
-        } else {
+        }
+        else {
           const lines = content.split('\n').length
           section += `<attached_file path="${escapeXml(path)}" size="${content.length}" lines="${lines}">Use ReadFile to view this file.</attached_file>\n`
         }

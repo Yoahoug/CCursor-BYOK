@@ -18,7 +18,7 @@ import type { LLMMessage, LLMTool, LLMToolResultBlock } from '../llm/types'
 import { extractPlainTextContent } from './historyManager'
 import { ContextTokenTracker } from './tokenCounter'
 
-export type BreakdownCategory = { id: string, label: string, estimatedTokens: number }
+export interface BreakdownCategory { id: string, label: string, estimatedTokens: number }
 
 function extractXmlSection(text: string, tag: string): string {
   const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -43,7 +43,7 @@ function splitSubagentDefinitionsFromDescription(description: string): { descrip
 
 function splitSubagentDefinitionsFromTools(tools: LLMTool[]): { sanitizedTools: LLMTool[], subagentDefinitionsText: string } {
   const subagentDefinitions: string[] = []
-  const sanitizedTools = tools.map(tool => {
+  const sanitizedTools = tools.map((tool) => {
     if (tool.name !== 'Task' && tool.name !== 'Subagent' && !tool.description.includes('Available subagent_types'))
       return tool
 
@@ -175,8 +175,9 @@ export function buildContextBreakdown(params: {
         else
           mcpDiscoveryTexts.push(text)
       }
-      else
+      else {
         toolResultTexts.push(text)
+      }
     }
   }
 

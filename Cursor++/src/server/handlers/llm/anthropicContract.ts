@@ -1,4 +1,4 @@
-import type Anthropic from '@anthropic-ai/sdk';
+import type Anthropic from '@anthropic-ai/sdk'
 
 function equalIds(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((id, index) => id === right[index])
@@ -40,7 +40,7 @@ export function assertValidAnthropicToolUseContract(messages: Anthropic.MessageP
     }
 
     if (typeof nextMessage.content === 'string') {
-      throw new Error(
+      throw new TypeError(
         `[ANTHROPIC CONTRACT] user message ${index + 1} after tool_use must use structured content blocks`,
       )
     }

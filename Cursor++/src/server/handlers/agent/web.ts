@@ -1,6 +1,10 @@
+import type { SearchProviderEntry, WebToolsConfig } from '../../data/defaults'
 import { getFetchConfig, getSearchConfig } from '../../config/searchConfigStore'
-import { loadSupermarkdown, supermarkdownUnavailableMessage } from './supermarkdown'
 import { logger } from '../../logger'
+
+// ── Search: multi-provider dispatch ──
+
+import { loadSupermarkdown, supermarkdownUnavailableMessage } from './supermarkdown'
 
 const FETCH_TIMEOUT_MS = 30_000
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024
@@ -10,12 +14,28 @@ const BINARY_TYPES = /^(image|video|audio|application\/pdf|application\/octet-st
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Cursor/3.4 Chrome/131.0.0.0 Safari/537.36'
 
 const EXCLUDE_SELECTORS = [
-  'nav', 'header', 'footer', 'aside',
-  '.sidebar', '.navigation', '.menu', '.nav',
-  '.advertisement', '.ads', '#ads', '.ad-container',
-  '.related-posts', '.comments', '.social-share',
-  'script', 'style', 'noscript', 'iframe',
-  '[role="navigation"]', '[role="banner"]', '[role="contentinfo"]',
+  'nav',
+  'header',
+  'footer',
+  'aside',
+  '.sidebar',
+  '.navigation',
+  '.menu',
+  '.nav',
+  '.advertisement',
+  '.ads',
+  '#ads',
+  '.ad-container',
+  '.related-posts',
+  '.comments',
+  '.social-share',
+  'script',
+  'style',
+  'noscript',
+  'iframe',
+  '[role="navigation"]',
+  '[role="banner"]',
+  '[role="contentinfo"]',
 ]
 
 interface CacheEntry { markdown: string, url: string, expiresAt: number }
@@ -83,7 +103,7 @@ function ipv4FromMappedIpv6(host: string): string | null {
     return null
   const high = Number.parseInt(hex[1], 16)
   const low = Number.parseInt(hex[2], 16)
-  return [high >> 8, high & 0xff, low >> 8, low & 0xff].join('.')
+  return [high >> 8, high & 0xFF, low >> 8, low & 0xFF].join('.')
 }
 
 /** IPv6 里的私网 / 特殊用途段：回环、未指定、ULA(fc00::/7)、链路本地(fe80::/10) */
@@ -196,8 +216,9 @@ async function fetchBuiltin(url: string): Promise<{ url: string, markdown: strin
       throw new Error(`Response body too large: ${text.length} bytes`)
     const finalUrl = response.url || url
     let markdown: string
-    if (contentType.includes('text/html') || /^<!doctype html/i.test(text) || /<html[\s>]/i.test(text))
+    if (contentType.includes('text/html') || /^<!doctype html/i.test(text) || /<html[\s>]/i.test(text)) {
       markdown = htmlToMarkdown(text, finalUrl)
+    }
     else if (contentType.includes('application/json')) {
       try { markdown = `# ${finalUrl}\n\n\`\`\`json\n${JSON.stringify(JSON.parse(text), null, 2).slice(0, MAX_MARKDOWN_CHARS)}\n\`\`\`` }
       catch { markdown = `# ${finalUrl}\n\n\`\`\`\n${text.slice(0, MAX_MARKDOWN_CHARS)}\n\`\`\`` }
@@ -398,11 +419,7 @@ function decodeDuckDuckGoHref(href: string): string {
   }
 }
 
-// ── Search: multi-provider dispatch ──
-
-import type { SearchProviderEntry, WebToolsConfig } from '../../data/defaults'
-
-export type SearchRef = { title: string, url: string, chunk: string }
+export interface SearchRef { title: string, url: string, chunk: string }
 
 /**
  * DuckDuckGo 抓取会返回 202 + 反爬挑战页（"Select all squares containing a duck"）。
@@ -590,8 +607,9 @@ export async function performWebSearch(searchTerm: string, config?: WebToolsConf
     const merged: SearchRef[] = []
     let lastError: unknown = null
     for (const r of settled) {
-      if (r.status === 'fulfilled')
+      if (r.status === 'fulfilled') {
         merged.push(...r.value)
+      }
       else {
         lastError = r.reason
         logger.warn({ error: (r.reason as Error)?.message }, '[WEB] parallel search provider failed')

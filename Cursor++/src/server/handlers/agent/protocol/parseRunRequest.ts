@@ -1,13 +1,6 @@
 import type { IdeFile, ParsedCursorRule, ParsedRunRequest } from './types'
 import { listKnowledgeItems } from '../../../config/knowledgeBaseStore'
 import { logger } from '../../../logger'
-import { emptyParsed, toBytes } from './shared'
-import {
-  normalizeMcpInputSchema,
-  normalizeMcpToolName,
-  parseMcpMetaToolOptions,
-  resolveMcpServerIdentifier,
-} from './mcpNormalization'
 import {
   categorizeCursorRules,
   isSkillPath,
@@ -16,8 +9,15 @@ import {
   normalizeCursorRule,
   normalizeCustomSubagent,
 } from '../contextCatalog'
+import {
+  normalizeMcpInputSchema,
+  normalizeMcpToolName,
+  parseMcpMetaToolOptions,
+  resolveMcpServerIdentifier,
+} from './mcpNormalization'
+import { emptyParsed, toBytes } from './shared'
 
-type ParsedBackgroundTaskCompletion = {
+interface ParsedBackgroundTaskCompletion {
   taskId: string
   kind: string
   status: string
@@ -29,25 +29,35 @@ type ParsedBackgroundTaskCompletion = {
 
 function normalizeBackgroundTaskKind(value: unknown): string {
   if (typeof value === 'number') {
-    if (value === 1) return 'shell'
-    if (value === 2) return 'subagent'
+    if (value === 1)
+      return 'shell'
+    if (value === 2)
+      return 'subagent'
   }
   const text = String(value ?? '').toLowerCase()
-  if (text.includes('shell')) return 'shell'
-  if (text.includes('subagent')) return 'subagent'
+  if (text.includes('shell'))
+    return 'shell'
+  if (text.includes('subagent'))
+    return 'subagent'
   return 'unspecified'
 }
 
 function normalizeBackgroundTaskStatus(value: unknown): string {
   if (typeof value === 'number') {
-    if (value === 1) return 'success'
-    if (value === 2) return 'error'
-    if (value === 3) return 'aborted'
+    if (value === 1)
+      return 'success'
+    if (value === 2)
+      return 'error'
+    if (value === 3)
+      return 'aborted'
   }
   const text = String(value ?? '').toLowerCase()
-  if (text.includes('success')) return 'success'
-  if (text.includes('error')) return 'error'
-  if (text.includes('abort')) return 'aborted'
+  if (text.includes('success'))
+    return 'success'
+  if (text.includes('error'))
+    return 'error'
+  if (text.includes('abort'))
+    return 'aborted'
   return text || 'unspecified'
 }
 
@@ -116,14 +126,20 @@ export function parseRunRequest(msg: Record<string, unknown>): ParsedRunRequest 
     logger.info({
       count: backgroundTaskCompletions.length,
       completions: backgroundTaskCompletions.map(c => ({
-        taskId: c.taskId, kind: c.kind, status: c.status, detailLen: c.detail?.length ?? 0,
+        taskId: c.taskId,
+        kind: c.kind,
+        status: c.status,
+        detailLen: c.detail?.length ?? 0,
       })),
-    }, '[AGENT] backgroundTaskCompletion parsed');
+    }, '[AGENT] backgroundTaskCompletion parsed')
   }
 
   logger.debug({
     actionKeys: action ? Object.keys(action) : [],
-    isSummarize, isResume, isSubagent, isBackgroundTaskCompletion,
+    isSummarize,
+    isResume,
+    isSubagent,
+    isBackgroundTaskCompletion,
     backgroundTaskCompletionCount: backgroundTaskCompletions.length,
     runRequestTopKeys: Object.keys(runRequest).filter(k => !['conversationState', 'action', 'modelDetails', 'mcpTools'].includes(k)),
   }, '[AGENT] action diagnosis')
@@ -154,8 +170,7 @@ export function parseRunRequest(msg: Record<string, unknown>): ParsedRunRequest 
     })).filter(r => r.toolCallId.length > 0)
   })()
   if (interruptedResolutions.length > 0) {
-    logger.info({ count: interruptedResolutions.length, ids: interruptedResolutions.map(r => r.toolCallId) },
-      '[AGENT] interrupted pending tool call resolutions received')
+    logger.info({ count: interruptedResolutions.length, ids: interruptedResolutions.map(r => r.toolCallId) }, '[AGENT] interrupted pending tool call resolutions received')
   }
   // requestContext: userMessageAction / resumeAction / executePlanAction 都可能带一份。
   // 多轮对话中每一轮都会重新推送,不能假设首轮装载一次就够。
@@ -212,10 +227,10 @@ export function parseRunRequest(msg: Record<string, unknown>): ParsedRunRequest 
     'modelDetails.modelId': modelDetails?.modelId,
     'modelDetails.displayModelId': modelDetails?.displayModelId,
     'requestedModel.modelId': requestedModel?.modelId,
-    hasModelDetails: !!modelDetails,
-    hasRequestedModel: !!requestedModel,
-    modelDetailsKeys: modelDetails ? Object.keys(modelDetails) : [],
-    requestedModelKeys: requestedModel ? Object.keys(requestedModel) : [],
+    'hasModelDetails': !!modelDetails,
+    'hasRequestedModel': !!requestedModel,
+    'modelDetailsKeys': modelDetails ? Object.keys(modelDetails) : [],
+    'requestedModelKeys': requestedModel ? Object.keys(requestedModel) : [],
   }, '[AGENT] model field diagnosis')
   const conversationState = runRequest.conversationState as Record<string, unknown> | undefined
   const prependUserMessagesRaw = (
@@ -244,8 +259,7 @@ export function parseRunRequest(msg: Record<string, unknown>): ParsedRunRequest 
     csEmpty: csKeys.length === 0,
   }, rpmLen > 0
     ? '[SESSION] <<< CS RECV: client sent history (checkpoint roundtrip OK)'
-    : '[SESSION] <<< CS RECV: empty (new session or revert; sqlite will be cleared if stale)',
-  )
+    : '[SESSION] <<< CS RECV: empty (new session or revert; sqlite will be cleared if stale)')
 
   // 提取用户消息附带的图片
   // Cursor 客户端 toJson() 后 oneof 展平为顶层字段:
@@ -627,7 +641,7 @@ export function parseRunRequest(msg: Record<string, unknown>): ParsedRunRequest 
   // subagentModelOverrides (AgentRunRequest field 20) — 用户在 Settings > Subagents 中的模型 override
   // subagentModelOverrides oneof 在 protobuf JSON 中: { subagentType, model?: {modelId,...}, inherit?: bool, disabled?: bool }
   const subagentModelOverridesRaw = (runRequest?.subagentModelOverrides as Array<Record<string, unknown>> | undefined) ?? []
-  const subagentModelOverrides = subagentModelOverridesRaw.map(o => {
+  const subagentModelOverrides = subagentModelOverridesRaw.map((o) => {
     const subagentType = (o.subagentType as string) ?? ''
     if (o.model) {
       const model = o.model as Record<string, unknown>
@@ -691,7 +705,10 @@ export function parseRunRequest(msg: Record<string, unknown>): ParsedRunRequest 
       const blobId = raw instanceof Uint8Array
         ? Buffer.from(raw).toString('utf-8')
         : typeof raw === 'string'
-          ? (() => { try { return Buffer.from(raw, 'base64').toString('utf-8') } catch { return raw } })()
+          ? (() => {
+              try { return Buffer.from(raw, 'base64').toString('utf-8') }
+              catch { return raw }
+            })()
           : ''
       return { blobId }
     }
@@ -969,7 +986,8 @@ export function parseRunRequest(msg: Record<string, unknown>): ParsedRunRequest 
     executePlanFileUri: planFileUri || undefined,
     debugModeConfig: (() => {
       const dmc = requestContext?.debugModeConfig as Record<string, unknown> | undefined
-      if (!dmc) return undefined
+      if (!dmc)
+        return undefined
       return {
         logPath: (dmc.logPath as string) ?? '',
         serverEndpoint: (dmc.serverEndpoint as string) ?? '',

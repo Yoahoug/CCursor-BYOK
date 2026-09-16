@@ -1,10 +1,10 @@
-import { dirname, posix } from 'node:path'
 import type {
   ParsedAgentSkill,
   ParsedCursorRule,
   ParsedCustomSubagent,
   ParsedRunRequest,
 } from './protocol/types'
+import { dirname, posix } from 'node:path'
 
 const CURSOR_RULE_SOURCE_TEAM = 1
 const CURSOR_RULE_SOURCE_USER = 2
@@ -39,8 +39,10 @@ function normalizeRuleSource(value: unknown): number {
   if (typeof value !== 'string')
     return 0
   const normalized = value.toUpperCase()
-  if (normalized.includes('TEAM')) return CURSOR_RULE_SOURCE_TEAM
-  if (normalized.includes('USER')) return CURSOR_RULE_SOURCE_USER
+  if (normalized.includes('TEAM'))
+    return CURSOR_RULE_SOURCE_TEAM
+  if (normalized.includes('USER'))
+    return CURSOR_RULE_SOURCE_USER
   return 0
 }
 
@@ -74,10 +76,14 @@ function readOneofCase(container: unknown): { kind: ParsedCursorRule['kind'], va
 
 function normalizeRuleKind(value: string): ParsedCursorRule['kind'] {
   const compact = value.replace(/[_-]/g, '').toLowerCase()
-  if (compact === 'global') return 'global'
-  if (compact === 'fileglobbed' || compact === 'fileglobs') return 'fileGlobbed'
-  if (compact === 'agentfetched') return 'agentFetched'
-  if (compact === 'manuallyattached') return 'manuallyAttached'
+  if (compact === 'global')
+    return 'global'
+  if (compact === 'fileglobbed' || compact === 'fileglobs')
+    return 'fileGlobbed'
+  if (compact === 'agentfetched')
+    return 'agentFetched'
+  if (compact === 'manuallyattached')
+    return 'manuallyAttached'
   return 'unknown'
 }
 
@@ -96,7 +102,7 @@ export function isSkillPath(fullPath: string): boolean {
   if (SKILL_PATH_SEGMENTS.some(segment => normalized.includes(segment)))
     return true
   const pluginCache = normalized.indexOf('/.cursor/plugins/cache/')
-  return pluginCache >= 0 && normalized.indexOf('/skills/', pluginCache) >= 0
+  return pluginCache >= 0 && normalized.includes('/skills/', pluginCache)
 }
 
 export function normalizeCursorRule(raw: Record<string, unknown>): ParsedCursorRule {
@@ -327,7 +333,7 @@ export function categorizeCursorRules(params: {
 
 function skillDisablesModelInvocation(content: string): boolean {
   const frontmatter = content.match(/^---\s*\n([\s\S]*?)\n---/)
-  return !!frontmatter && /^disable-model-invocation:\s*true\s*$/mi.test(frontmatter[1])
+  return !!frontmatter && /^disable-model-invocation:\s*true\s*$/im.test(frontmatter[1])
 }
 
 export function mergeAgentSkills(
@@ -473,8 +479,7 @@ function matchesGlob(value: string, pattern: string): boolean {
   const normalizedValue = posix.normalize(normalizePath(value))
   const normalizedPattern = normalizePath(pattern).replace(/^\.\//, '')
   try {
-    return expandBraces(normalizedPattern).slice(0, 64)
-      .some(expanded => globToRegExp(expanded).test(normalizedValue))
+    return expandBraces(normalizedPattern).slice(0, 64).some(expanded => globToRegExp(expanded).test(normalizedValue))
   }
   catch {
     return false
@@ -482,7 +487,7 @@ function matchesGlob(value: string, pattern: string): boolean {
 }
 
 function isAbsolutePattern(pattern: string): boolean {
-  return pattern.startsWith('/') || /^[A-Za-z]:\//.test(pattern)
+  return pattern.startsWith('/') || /^[A-Z]:\//i.test(pattern)
 }
 
 /** 官方 VK: file glob 相对 .cursor/rules 所属 workspace，absolute glob 对绝对路径。 */
@@ -530,7 +535,7 @@ export function skillMatchesReadPath(
         .filter(workspace => isInsidePath(target, workspace))
         .map(workspace => target.slice(workspace === '/' ? 1 : workspace.length + 1))
 
-  return skill.globs.some(pattern => {
+  return skill.globs.some((pattern) => {
     const normalizedPattern = normalizePath(pattern)
     if (isAbsolutePattern(normalizedPattern))
       return matchesGlob(target, normalizedPattern)

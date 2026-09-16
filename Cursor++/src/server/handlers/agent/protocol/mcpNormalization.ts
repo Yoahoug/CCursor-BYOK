@@ -81,7 +81,7 @@ export function resolveMcpServerIdentifier(
  * 做真实路由。
  */
 export function normalizeMcpToolName(raw: string, seen: Set<string>): string {
-  let base = raw.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '')
+  let base = raw.replace(/[^\w-]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '')
   if (!base)
     base = 'mcp_tool'
   if (!seen.has(base))
@@ -147,10 +147,14 @@ function unwrapProtoValue(v: unknown): unknown {
   if (v == null || typeof v !== 'object')
     return v
   const obj = v as Record<string, unknown>
-  if ('stringValue' in obj) return obj.stringValue
-  if ('numberValue' in obj) return obj.numberValue
-  if ('boolValue' in obj) return obj.boolValue
-  if ('nullValue' in obj) return null
+  if ('stringValue' in obj)
+    return obj.stringValue
+  if ('numberValue' in obj)
+    return obj.numberValue
+  if ('boolValue' in obj)
+    return obj.boolValue
+  if ('nullValue' in obj)
+    return null
   if (obj.listValue && typeof obj.listValue === 'object') {
     const values = (obj.listValue as Record<string, unknown>).values as unknown[] | undefined
     return Array.isArray(values) ? values.map(unwrapProtoValue) : []

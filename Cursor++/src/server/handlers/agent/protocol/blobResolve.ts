@@ -6,8 +6,8 @@
  * 的一次专门 resolve 阶段。
  */
 import type { ParsedRunRequest } from './types'
-import { getCachedBlob } from '../blobStore'
 import { logger } from '../../../logger'
+import { getCachedBlob } from '../blobStore'
 
 /** 收集 parsed 里所有需要从 blobStore 取回的 blobId (当前仅 extraContextEntries) */
 export function collectExtraContextBlobIds(parsed: ParsedRunRequest): string[] {

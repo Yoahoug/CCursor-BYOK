@@ -32,10 +32,12 @@ const PATCH_FILE_HEADER_PATTERN = /\*\*\*\s+(?:Update|Add|Delete)\s+File:\s+(.+?
 export function detectEditPathFromToolInput(toolName: string, rawInput: string): string {
   const pathKey = toolName === 'EditNotebook' ? 'target_notebook' : 'path'
   const m = rawInput.match(PATH_VALUE_PATTERNS[pathKey]!)
-  if (m?.[1]) return decodeJsonStringFragment(m[1])
+  if (m?.[1])
+    return decodeJsonStringFragment(m[1])
   if (toolName === 'ApplyPatch') {
     const p = rawInput.match(PATCH_FILE_HEADER_PATTERN)
-    if (p?.[1]) return p[1].trim()
+    if (p?.[1])
+      return p[1].trim()
   }
   return ''
 }
@@ -46,12 +48,18 @@ export function normalizeDetectedEditPath(rawPath: string): string {
 
 function decodeJsonStringFragment(value: string): string {
   return value.replace(/\\(["\\/bfnrt]|u[0-9a-fA-F]{4})/g, (_match, esc: string) => {
-    if (esc === 'b') return '\b'
-    if (esc === 'f') return '\f'
-    if (esc === 'n') return '\n'
-    if (esc === 'r') return '\r'
-    if (esc === 't') return '\t'
-    if (esc.startsWith('u')) return String.fromCharCode(Number.parseInt(esc.slice(1), 16))
+    if (esc === 'b')
+      return '\b'
+    if (esc === 'f')
+      return '\f'
+    if (esc === 'n')
+      return '\n'
+    if (esc === 'r')
+      return '\r'
+    if (esc === 't')
+      return '\t'
+    if (esc.startsWith('u'))
+      return String.fromCharCode(Number.parseInt(esc.slice(1), 16))
     return esc
   })
 }
@@ -64,7 +72,7 @@ function decodeEscape(ch: string): string {
     case '"': return '"'
     case '/': return '/'
     case 'r': return '\r'
-    default: return '\\' + ch
+    default: return `\\${ch}`
   }
 }
 
@@ -93,20 +101,52 @@ export class EditDeltaExtractor {
 
   feed(delta: string): string | null {
     this.buf += delta
-    if (!this.detectedPath) this.detectedPath = detectEditPathFromToolInput(this.toolName, this.buf)
-    if (this.state === 'DONE') return null
+    if (!this.detectedPath)
+      this.detectedPath = detectEditPathFromToolInput(this.toolName, this.buf)
+    if (this.state === 'DONE')
+      return null
     let out = ''
     for (let i = 0; i < delta.length; i++) {
       const c = delta[i]
-      if (this.esc) { this.esc = false; if (this.state === 'IN_VAL') out += decodeEscape(c); else if (this.state === 'IN_KEY') this.key += c; continue }
+      if (this.esc) {
+        this.esc = false; if (this.state === 'IN_VAL')
+          out += decodeEscape(c); else if (this.state === 'IN_KEY')
+          this.key += c; continue
+      }
       switch (this.state) {
         case 'SCAN': if (c === '"') { this.state = 'IN_KEY'; this.key = '' } break
-        case 'IN_KEY': if (c === '\\') { this.esc = true } else if (c === '"') this.state = 'COLON'; else this.key += c; break
-        case 'COLON': if (c === ':' || c === ' ' || c === '\t') break; if (c === '"') this.state = this.key === this.target ? 'IN_VAL' : 'SKIP_VAL'; else this.state = 'SCAN'; break
-        case 'IN_VAL': if (c === '\\') { if (i + 1 < delta.length) { out += decodeEscape(delta[++i]) } else this.esc = true } else if (c === '"') this.state = 'DONE'; else out += c; break
-        case 'SKIP_VAL': if (c === '\\') { if (i + 1 < delta.length) i++; else this.esc = true } else if (c === '"') this.state = 'SCAN'; break
+        case 'IN_KEY': if (c === '\\') { this.esc = true }
+        else if (c === '"') {
+          this.state = 'COLON'
+        }
+        else {
+          this.key += c
+        } break
+        case 'COLON': if (c === ':' || c === ' ' || c === '\t')
+          break; if (c === '"')
+            this.state = this.key === this.target ? 'IN_VAL' : 'SKIP_VAL'; else this.state = 'SCAN'; break
+        case 'IN_VAL': if (c === '\\') {
+          if (i + 1 < delta.length) { out += decodeEscape(delta[++i]) }
+          else {
+            this.esc = true
+          }
+        }
+        else if (c === '"') {
+          this.state = 'DONE'
+        }
+        else {
+          out += c
+        } break
+        case 'SKIP_VAL': if (c === '\\') {
+          if (i + 1 < delta.length)
+            i++; else this.esc = true
+        }
+        else if (c === '"') {
+          this.state = 'SCAN'
+        } break
       }
-      if (this.state === 'DONE') break
+      if (this.state === 'DONE')
+        break
     }
     const normalizedOut = this.normalizeOutputDelta(out, this.state === 'DONE')
     return normalizedOut || null

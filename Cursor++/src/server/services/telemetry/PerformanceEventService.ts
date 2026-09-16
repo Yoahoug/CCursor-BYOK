@@ -6,9 +6,9 @@
  *
  * Transport: backendUrl (api2.cursor.sh)
  */
-import type { ConnectRouter } from '@connectrpc/connect';
-import { PerformanceEventService } from '../../gen/aiserver_v1_pb';
+import type { ConnectRouter } from '@connectrpc/connect'
+import { PerformanceEventService } from '../../gen/aiserver_v1_pb'
 
 export default (router: ConnectRouter) => {
-    router.service(PerformanceEventService, {});
-};
+  router.service(PerformanceEventService, {})
+}

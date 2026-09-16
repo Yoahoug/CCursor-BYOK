@@ -12,11 +12,11 @@
  *   不经过 api2，但部分配置下可能回落到 api2。
  *   FSIsEnabledForUser 返回 enabled=true 以保持 Tab 补全文件上下文正常。
  */
-import type { ConnectRouter } from '@connectrpc/connect';
-import { FileSyncService } from '../../gen/aiserver_v1_pb';
+import type { ConnectRouter } from '@connectrpc/connect'
+import { FileSyncService } from '../../gen/aiserver_v1_pb'
 
 export default (router: ConnectRouter) => {
-    router.service(FileSyncService, {
-        fSIsEnabledForUser: async () => ({ enabled: true }),
-    });
-};
+  router.service(FileSyncService, {
+    fSIsEnabledForUser: async () => ({ enabled: true }),
+  })
+}

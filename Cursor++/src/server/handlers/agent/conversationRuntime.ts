@@ -1,36 +1,39 @@
-import { SimulatedMsgReason, type AgentServerMessage } from '../../gen/agent_v1_pb'
+import type { AgentServerMessage } from '../../gen/agent_v1_pb'
 import type { LLMContentBlock, LLMMessage, LLMTool } from '../llm/types'
+import type { BreakdownCategory } from './contextBreakdown'
+import type { EditStreamDiagnostics } from './editStreamDiagnostics'
 import type { ParsedRunRequest } from './protocol'
 import type { AgentSession } from './session'
+import type { TaskLaunchContext } from './toolRuntime'
 import type { ToolCallInfo } from './tools'
-import { resolveExecutionToolName } from './tools'
+import { normalizeUsage } from '../../../shared/usageTypes'
 import { clearDraftCheckpoint, persistConversationCheckpoint } from '../../database/checkpoints'
+import { SimulatedMsgReason } from '../../gen/agent_v1_pb'
 import { logger } from '../../logger'
+import { recordUsage } from '../../stats/usageStore'
+import { makeProviderError, makeToolError } from '../errors'
 import { resolveProviderRuntime } from '../llm'
+import { createRepairDiagnostics, hasRepairMutations, repairConversationHistory } from '../llm/transformMessages'
 import { decodeBlob } from './blob'
 import { cacheBlob, getCachedBlob } from './blobStore'
 import { emitFinalCheckpoint, emitRollingCheckpoint } from './checkpointManager'
-import { buildContextBreakdown, type BreakdownCategory } from './contextBreakdown'
-import { editNewlineStats, editToolTargetStats, type EditStreamDiagnostics } from './editStreamDiagnostics'
-import { detectEditPathFromToolInput, EditDeltaExtractor, normalizeDetectedEditPath } from './editStreamExtractor'
 import { createCompactionArtifacts, estimateMessagesTokens, formatMessageForSummary, planCompaction } from './compactionStrategy'
+import { buildContextBreakdown } from './contextBreakdown'
+import { contextualizeDynamicMetaTools, partitionCursorBuiltinTools, shouldEnableBuiltinDynamicProfile } from './dynamicTools'
+import { editNewlineStats, editToolTargetStats } from './editStreamDiagnostics'
+import { detectEditPathFromToolInput, EditDeltaExtractor, normalizeDetectedEditPath } from './editStreamExtractor'
 import { flushMessageBlobs, hydrateHistoryEntries, rebuildConversationHistory, repairHistoryEntries, sendAndCacheBlob } from './historyManager'
 import { buildMessages, workspaceUris } from './protocol'
+import { isSessionCancelled } from './session'
 import { checkpoint, editToolCallStreamDelta, heartbeat, kvMessage, partialToolCall, summary, summaryCompleted, summaryStarted, translateStream, userMessageAppended } from './stream'
+import { contextualizeSubagentTools } from './subagentCatalog'
 import { buildSummaryUserMessage, SUMMARY_SYSTEM_PROMPT } from './summaryPrompt'
-import { finalizeTaskResult, launchTaskTool, runToolCall, type TaskLaunchContext } from './toolRuntime'
-import { awaitExecResultAndClose, waitForPromiseWithHeartbeat } from './wait'
+import { finalizeTaskResult, launchTaskTool, runToolCall } from './toolRuntime'
+import { resolveExecutionToolName } from './tools'
 import { restoreBlobMessageToLLMMessage } from './transcript'
 import { ActiveTurnTracker, createCurrentTurnUserMessageBlob, readTurnBaseline } from './turnTracker'
-import { contextualizeDynamicMetaTools, partitionCursorBuiltinTools, shouldEnableBuiltinDynamicProfile } from './dynamicTools'
-import { contextualizeSubagentTools } from './subagentCatalog'
 import { addUsage, clampTokenDetails, emptyUsageTotals, estimateContextTokens, getAutoCompactThreshold, shouldTriggerCompaction } from './usage'
-import { recordUsage } from '../../stats/usageStore'
-import { normalizeUsage } from '../../../shared/usageTypes'
-import { isAgentRunAbortedError, throwIfSessionCancelled } from './wait'
-import { isSessionCancelled } from './session'
-import { makeProviderError, makeToolError } from '../errors'
-import { createRepairDiagnostics, hasRepairMutations, repairConversationHistory } from '../llm/transformMessages'
+import { awaitExecResultAndClose, isAgentRunAbortedError, throwIfSessionCancelled, waitForPromiseWithHeartbeat } from './wait'
 
 /**
  * 重新导出拆出去的模块，保持本文件原有公开 API 不变。
@@ -38,14 +41,14 @@ import { createRepairDiagnostics, hasRepairMutations, repairConversationHistory 
  * 测试与外部（`contextBreakdown.test.ts` / `editPathDetection.test.ts`）一直从
  * 这里导入这些符号；拆分是内部结构调整，不应该逼调用方改路径。
  */
-export { buildContextBreakdown, type BreakdownCategory } from './contextBreakdown'
+export { type BreakdownCategory, buildContextBreakdown } from './contextBreakdown'
 export { detectEditPathFromToolInput, EditDeltaExtractor, normalizeDetectedEditPath } from './editStreamExtractor'
 
 const LEADING_DASH_RE = /^-\s*/
 
 const EDIT_TOOL_NAMES = new Set(['ApplyPatch', 'Edit', 'Write', 'EditNotebook'])
 
-function cacheAndBuildKvBlob(id: number, blob: { blobId: string; blobData: string; blobDataRaw?: Uint8Array }): AgentServerMessage {
+function cacheAndBuildKvBlob(id: number, blob: { blobId: string, blobData: string, blobDataRaw?: Uint8Array }): AgentServerMessage {
   cacheBlob(blob.blobId, blob.blobData)
   return kvMessage(id, blob.blobId, blob.blobData, blob.blobDataRaw)
 }
@@ -228,15 +231,7 @@ async function* performInlineAutoSummarize(params: {
     contextTokenLimit,
   )
 
-  persistConversationCheckpoint({ kind: 'committed',
-    conversationId: parsed.conversationId,
-    rootBlobIds: artifacts.nextRootBlobIds,
-    turnBlobIds: parsed.historyTurnBlobIds,
-    summaryArchiveIds: artifacts.nextSummaryArchiveIds,
-    tokenDetails: compactedTokenDetails,
-    mode: parsed.mode,
-    updatedAt: Date.now(),
-  })
+  persistConversationCheckpoint({ kind: 'committed', conversationId: parsed.conversationId, rootBlobIds: artifacts.nextRootBlobIds, turnBlobIds: parsed.historyTurnBlobIds, summaryArchiveIds: artifacts.nextSummaryArchiveIds, tokenDetails: compactedTokenDetails, mode: parsed.mode, updatedAt: Date.now() })
 
   yield checkpoint(
     artifacts.nextRootBlobIds,
@@ -469,10 +464,10 @@ export async function* handleConversationRun(
     profileTrigger: !clientSupportsDynamicProfile
       ? 'off'
       : parsed.clientSupportsDynamicTools
-          ? 'capability'
-          : parsed.mcpMetaTool?.enabled
-            ? 'mcp_meta'
-            : 'previous_turn',
+        ? 'capability'
+        : parsed.mcpMetaTool?.enabled
+          ? 'mcp_meta'
+          : 'previous_turn',
     // staticToolCount 是模型直接可见的内置工具数;骤降说明分区把不该动的工具
     // (Shell / Read / Edit 等)划进了 dynamic,而那类故障没有其它痕迹。
     staticToolCount: cursorPartition.staticTools.length,
@@ -630,10 +625,7 @@ export async function* handleConversationRun(
         thinking: parsed.clientThinking,
         level: parsed.clientThinkingLevel,
         budget: parsed.clientThinkingBudget,
-      }, parsed.conversationId, parsed.isSubagent, parsed.clientFast,
-      disabledToolsForRun.size > 0 ? disabledToolsForRun : undefined,
-      contextTokenLimit,
-      runtimeBuiltinTools)
+      }, parsed.conversationId, parsed.isSubagent, parsed.clientFast, disabledToolsForRun.size > 0 ? disabledToolsForRun : undefined, contextTokenLimit, runtimeBuiltinTools)
 
       if (!breakdownCategories) {
         breakdownCategories = buildContextBreakdown({
@@ -711,10 +703,12 @@ export async function* handleConversationRun(
                   tool: current.name,
                   path: normalizedPath,
                   rawPath: extractor.detectedPath,
-                  streamedBeforePath: streamDiag ? {
-                    deltaCount: streamDiag.deltaCount,
-                    streamContent: editNewlineStats(streamDiag.streamContent),
-                  } : undefined,
+                  streamedBeforePath: streamDiag
+                    ? {
+                        deltaCount: streamDiag.deltaCount,
+                        streamContent: editNewlineStats(streamDiag.streamContent),
+                      }
+                    : undefined,
                   currentDelta: editNewlineStats(event.input),
                   accumulatedInput: editNewlineStats(accumulatedInput),
                   mcid,
@@ -729,7 +723,8 @@ export async function* handleConversationRun(
                 frames.push(editToolCallStreamDelta(event.id, content, mcid))
                 logger.debug({ callId: event.id, contentLen: content.length, hasPath: editPathSent.has(event.id), mcid }, '[EDIT_T] 3.editToolCallDelta')
               }
-              if (frames.length > 0) return frames.length === 1 ? frames[0] : frames
+              if (frames.length > 0)
+                return frames.length === 1 ? frames[0] : frames
             }
             break
           }
@@ -742,7 +737,8 @@ export async function* handleConversationRun(
               // 权威参数: done 事件携带的完整 arguments > delta 累积
               const rawArgs = event.arguments ?? current.input ?? ''
               let input: Record<string, unknown> = {}
-              try { input = JSON.parse(rawArgs) } catch {}
+              try { input = JSON.parse(rawArgs) }
+              catch {}
               if (EDIT_TOOL_NAMES.has(current.name)) {
                 // 同一个 streamContent 只统计一次。原先 stats / mixed /
                 // maxConsecutiveBlankLines 各调一次 editNewlineStats，而它内部要
@@ -756,15 +752,17 @@ export async function* handleConversationRun(
                   pathWasSentDuringStream: pathWasSent,
                   rawArgs: editNewlineStats(rawArgs),
                   targetFields: editToolTargetStats(current.name, input),
-                  streamedContent: streamDiag && streamedStats ? {
-                    deltaCount: streamDiag.deltaCount,
-                    stats: streamedStats,
-                    suspicious: {
-                      hasCrCrLf: /\r\r\n/.test(streamDiag.streamContent),
-                      mixedLineEndings: streamedStats.mixed,
-                      hasLargeBlankRun: streamedStats.maxConsecutiveBlankLines >= 3,
-                    },
-                  } : undefined,
+                  streamedContent: streamDiag && streamedStats
+                    ? {
+                        deltaCount: streamDiag.deltaCount,
+                        stats: streamedStats,
+                        suspicious: {
+                          hasCrCrLf: /\r\r\n/.test(streamDiag.streamContent),
+                          mixedLineEndings: streamedStats.mixed,
+                          hasLargeBlankRun: streamedStats.maxConsecutiveBlankLines >= 3,
+                        },
+                      }
+                    : undefined,
                 }, '[EDIT_NL] final edit tool arguments newline diagnostics')
               }
               pendingToolCalls.push({ callId: event.id, name: current.name, input })
@@ -977,7 +975,7 @@ export async function* handleConversationRun(
         }, '[AGENT] tool results pending provider-state flush')
       }
       const transition = roundContext.transition(messages, assistantContent)
-      flushedToolResults = transition.flushedToolResults;
+      flushedToolResults = transition.flushedToolResults
 
       if (roundImageBlocks.length > 0) {
         messages.push({ role: 'user', content: roundImageBlocks })
@@ -1059,7 +1057,8 @@ export async function* handleConversationRun(
             newMessageCount: messages.length,
             newUsedTokens: usedTokensEstimate,
           }, '[AGENT] auto-summarize: state replaced, continuing agent loop')
-        } else {
+        }
+        else {
           autoCompactConsecutiveFailures++
           logger.warn({
             conversationId: parsed.conversationId,

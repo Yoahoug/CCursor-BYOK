@@ -1,8 +1,8 @@
 type ConvertFn = (html: string, options: Record<string, unknown>) => string
 
-type LoadResult =
-  | { ok: true, convert: ConvertFn }
-  | { ok: false, error: Error }
+type LoadResult
+  = | { ok: true, convert: ConvertFn }
+    | { ok: false, error: Error }
 
 let cached: LoadResult | null = null
 let notifier: ((error: Error) => void) | null = null
@@ -24,7 +24,7 @@ export function isLikelyWindowsMsvcMissing(error: unknown): boolean {
     return false
   const message = error instanceof Error ? `${error.message}\n${error.stack ?? ''}` : String(error)
   return /supermarkdown\.win32-x64-msvc\.node/i.test(message)
-    && (/The specified module could not be found/i.test(message) || /找不到指定的模块/i.test(message))
+    && (/The specified module could not be found/i.test(message) || /找不到指定的模块/.test(message))
 }
 
 export function supermarkdownUnavailableMessage(_error?: Error): string {
@@ -47,7 +47,7 @@ export function loadSupermarkdown(): LoadResult {
   try {
     // Lazy-load the native module so extension activation does not fail when
     // Windows lacks the MSVC runtime required by supermarkdown.win32-x64-msvc.node.
-    // eslint-disable-next-line ts/no-require-imports
+
     const mod = require('@vakra-dev/supermarkdown') as { convert?: ConvertFn }
     if (typeof mod.convert !== 'function')
       throw new TypeError('@vakra-dev/supermarkdown did not export convert()')

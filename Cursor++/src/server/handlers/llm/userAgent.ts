@@ -1,3 +1,4 @@
+import type { ProviderType } from '../../data/defaults'
 /**
  * 默认 User-Agent 字符串
  *
@@ -9,37 +10,39 @@
  * 用户可通过 ProviderEntry.headers 中的 "User-Agent" 字段覆盖。
  */
 import os from 'node:os'
-import type { ProviderType } from '../../data/defaults'
 
 const CLAUDE_CODE_VERSION = '2.1.154'
 const CODEX_VERSION = '0.133.0'
 
 function getOsToken(): string {
-    const platform = os.platform()
-    const release = os.release()
-    const arch = os.arch()
-    const osName = platform === 'darwin' ? 'Mac OS' : platform === 'win32' ? 'Windows' : 'Linux'
-    return `${osName} ${release}; ${arch}`
+  const platform = os.platform()
+  const release = os.release()
+  const arch = os.arch()
+  const osName = platform === 'darwin' ? 'Mac OS' : platform === 'win32' ? 'Windows' : 'Linux'
+  return `${osName} ${release}; ${arch}`
 }
 
 const UA_BY_PROVIDER_TYPE: Partial<Record<ProviderType, string>> = {
-    'anthropic': `claude-cli/${CLAUDE_CODE_VERSION} (external, cli)`,
-    'openai-responses': `codex_cli_rs/${CODEX_VERSION} (${getOsToken()})`,
+  'anthropic': `claude-cli/${CLAUDE_CODE_VERSION} (external, cli)`,
+  'openai-responses': `codex_cli_rs/${CODEX_VERSION} (${getOsToken()})`,
 }
 
 export function getDefaultUserAgent(providerType: ProviderType): string | undefined {
-    return UA_BY_PROVIDER_TYPE[providerType]
+  return UA_BY_PROVIDER_TYPE[providerType]
 }
 
 export function buildDefaultHeaders(
-    providerType: ProviderType,
-    customHeaders?: Record<string, string>,
+  providerType: ProviderType,
+  customHeaders?: Record<string, string>,
 ): Record<string, string> | undefined {
-    const ua = getDefaultUserAgent(providerType)
-    if (!ua && !customHeaders) return undefined
+  const ua = getDefaultUserAgent(providerType)
+  if (!ua && !customHeaders)
+    return undefined
 
-    const headers: Record<string, string> = {}
-    if (ua) headers['User-Agent'] = ua
-    if (customHeaders) Object.assign(headers, customHeaders)
-    return Object.keys(headers).length > 0 ? headers : undefined
+  const headers: Record<string, string> = {}
+  if (ua)
+    headers['User-Agent'] = ua
+  if (customHeaders)
+    Object.assign(headers, customHeaders)
+  return Object.keys(headers).length > 0 ? headers : undefined
 }

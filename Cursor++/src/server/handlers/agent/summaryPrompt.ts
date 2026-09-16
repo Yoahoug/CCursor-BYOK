@@ -10,9 +10,9 @@
  * - buildSummaryUserMessage(): 将对话内容填入模板
  */
 
-export const SUMMARY_PROMPT_VERSION = 'v3.0-official';
+export const SUMMARY_PROMPT_VERSION = 'v3.0-official'
 
-export const SUMMARY_SYSTEM_PROMPT = `You are an intelligent assistant, tasked with summarizing the following conversation. You MUST follow the instructions given in the <summarization_request> tags and summarize the conversation. This summary will be provided to another AI assistant to continue the task at hand, so you should align the summary with the task in the conversation.`;
+export const SUMMARY_SYSTEM_PROMPT = `You are an intelligent assistant, tasked with summarizing the following conversation. You MUST follow the instructions given in the <summarization_request> tags and summarize the conversation. This summary will be provided to another AI assistant to continue the task at hand, so you should align the summary with the task in the conversation.`
 
 const SUMMARY_USER_TEMPLATE = `<conversation_transcript>
 {CONVERSATION}
@@ -55,8 +55,8 @@ If there is a next step, include direct quotes from the most recent conversation
 showing exactly what task you were working on and where you left off. This should be verbatim to ensure
 there's no drift in task interpretation.
 
-Please provide your summary based on the conversation so far, following this structure and ensuring precision and thoroughness in your response.</summarization_request>`;
+Please provide your summary based on the conversation so far, following this structure and ensuring precision and thoroughness in your response.</summarization_request>`
 
 export function buildSummaryUserMessage(summarySourceText: string): string {
-    return SUMMARY_USER_TEMPLATE.replace('{CONVERSATION}', summarySourceText);
+  return SUMMARY_USER_TEMPLATE.replace('{CONVERSATION}', summarySourceText)
 }

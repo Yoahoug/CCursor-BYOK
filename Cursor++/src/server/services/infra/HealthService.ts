@@ -12,9 +12,9 @@
  * Transport: agentBidiTransport (*.api5.cursor.sh)
  *   不经过 api2，注册为 fallback。
  */
-import type { ConnectRouter } from '@connectrpc/connect';
-import { HealthService } from '../../gen/aiserver_v1_pb';
+import type { ConnectRouter } from '@connectrpc/connect'
+import { HealthService } from '../../gen/aiserver_v1_pb'
 
 export default (router: ConnectRouter) => {
-    router.service(HealthService, {});
-};
+  router.service(HealthService, {})
+}

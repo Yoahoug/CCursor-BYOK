@@ -35,7 +35,7 @@ export function contextualizeSubagentTools(
     return tools
 
   const names = available.map(subagent => subagent.name)
-  const catalog = available.map(subagent => {
+  const catalog = available.map((subagent) => {
     const mode = subagent.permissionMode === 'readonly' ? ' (read-only)' : ''
     return `- ${subagent.name}${mode}: ${subagent.description || 'Custom subagent.'}`
   }).join('\n')

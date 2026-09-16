@@ -1,47 +1,47 @@
-import { str } from '../shared';
-import type { ToolRegistryEntry } from '../types';
+import type { ToolRegistryEntry } from '../types'
+import { str } from '../shared'
 
 function buildTaskSubagentType(name: string): Record<string, unknown> | undefined {
-    switch (name) {
-        case 'explore': return { type: { case: 'explore', value: {} } };
-        case 'browser-use':
-        case 'browserUse': return { type: { case: 'browserUse', value: {} } };
-        case 'shell': return { type: { case: 'shell', value: {} } };
-        case 'debug': return { type: { case: 'debug', value: {} } };
-        case 'computer-use':
-        case 'computerUse': return { type: { case: 'computerUse', value: {} } };
-        case 'media-review':
-        case 'mediaReview': return { type: { case: 'mediaReview', value: {} } };
-        case 'watchVideo': return { type: { case: 'watchVideo', value: {} } };
-        case 'cursorGuide': return { type: { case: 'cursorGuide', value: {} } };
-        case 'bash': return { type: { case: 'bash', value: {} } };
-        case 'vm-setup-helper':
-        case 'vmSetupHelper': return { type: { case: 'vmSetupHelper', value: {} } };
-        case 'generalPurpose':
-        case 'general-purpose':
-            return { type: { case: 'custom', value: { name: 'generalPurpose' } } };
-        case 'ui-designer':
-            return { type: { case: 'custom', value: { name: 'ui-designer' } } };
-        case 'best-of-n-runner':
-            return { type: { case: 'custom', value: { name: 'best-of-n-runner' } } };
-        case 'bugbot':
-            return { type: { case: 'custom', value: { name: 'bugbot' } } };
-        case 'coordinator-agent':
-            return { type: { case: 'custom', value: { name: 'coordinator-agent' } } };
-        case 'worker-agent':
-            return { type: { case: 'custom', value: { name: 'worker-agent' } } };
-        case 'cursorBlameLearning':
-            return { type: { case: 'custom', value: { name: 'cursorBlameLearning' } } };
-        case 'security-review':
-            return { type: { case: 'custom', value: { name: 'security-review' } } };
-        default:
-            return name ? { type: { case: 'custom', value: { name } } } : undefined;
-    }
+  switch (name) {
+    case 'explore': return { type: { case: 'explore', value: {} } }
+    case 'browser-use':
+    case 'browserUse': return { type: { case: 'browserUse', value: {} } }
+    case 'shell': return { type: { case: 'shell', value: {} } }
+    case 'debug': return { type: { case: 'debug', value: {} } }
+    case 'computer-use':
+    case 'computerUse': return { type: { case: 'computerUse', value: {} } }
+    case 'media-review':
+    case 'mediaReview': return { type: { case: 'mediaReview', value: {} } }
+    case 'watchVideo': return { type: { case: 'watchVideo', value: {} } }
+    case 'cursorGuide': return { type: { case: 'cursorGuide', value: {} } }
+    case 'bash': return { type: { case: 'bash', value: {} } }
+    case 'vm-setup-helper':
+    case 'vmSetupHelper': return { type: { case: 'vmSetupHelper', value: {} } }
+    case 'generalPurpose':
+    case 'general-purpose':
+      return { type: { case: 'custom', value: { name: 'generalPurpose' } } }
+    case 'ui-designer':
+      return { type: { case: 'custom', value: { name: 'ui-designer' } } }
+    case 'best-of-n-runner':
+      return { type: { case: 'custom', value: { name: 'best-of-n-runner' } } }
+    case 'bugbot':
+      return { type: { case: 'custom', value: { name: 'bugbot' } } }
+    case 'coordinator-agent':
+      return { type: { case: 'custom', value: { name: 'coordinator-agent' } } }
+    case 'worker-agent':
+      return { type: { case: 'custom', value: { name: 'worker-agent' } } }
+    case 'cursorBlameLearning':
+      return { type: { case: 'custom', value: { name: 'cursorBlameLearning' } } }
+    case 'security-review':
+      return { type: { case: 'custom', value: { name: 'security-review' } } }
+    default:
+      return name ? { type: { case: 'custom', value: { name } } } : undefined
+  }
 }
 
 const ANTHROPIC = {
-    name: 'Task',
-    description: `Launch a new agent to handle complex, multi-step tasks autonomously.
+  name: 'Task',
+  description: `Launch a new agent to handle complex, multi-step tasks autonomously.
 
 The Task tool launches specialized subagents (subprocesses) that autonomously handle complex tasks. Each subagent_type has specific capabilities and tools available to it.
 
@@ -91,66 +91,66 @@ Available models:
 When speaking to the USER about which model you selected for a Task/subagent, do NOT reveal these internal model alias names. Instead, use natural language such as "a faster model", "a more capable model", or "the default model".
 
 When choosing a model, prefer \`fast\` for quick, straightforward tasks to minimize cost and latency. Only choose a named alternative model when there is a specific reason — for example, the task requires deep multi-step reasoning, very high code quality, multimodal understanding, or the user explicitly requests a more capable model.`,
-    inputSchema: {
-            "type": "object",
-            "required": [
-                    "description",
-                    "prompt"
-            ],
-            "properties": {
-                    "description": {
-                            "type": "string",
-                            "description": "A short (3-5 word) description of the task"
-                    },
-                    "prompt": {
-                            "type": "string",
-                            "description": "The task for the agent to perform"
-                    },
-                    "subagent_type": {
-                            "type": "string",
-                            "enum": [
-                                    "generalPurpose",
-                                    "explore",
-                                    "shell",
-                                    "best-of-n-runner",
-                                    "security-review",
-                                    "cursorBlameLearning"
-                            ],
-                            "description": "Subagent type to use for this task."
-                    },
-                    "model": {
-                            "type": "string",
-                            "enum": [
-                                    "fast"
-                            ],
-                            "description": "Optional model to use for this agent. If not specified, inherits from parent. Prefer fast for quick, straightforward tasks to minimize cost and latency. Only select a different model when the task specifically benefits from it (e.g., deep reasoning, high-quality code review, multimodal input)"
-                    },
-                    "readonly": {
-                            "type": "boolean",
-                            "description": "If true, the subagent will run in readonly mode (\"Ask mode\") with restricted write operations and no MCP access."
-                    },
-                    "run_in_background": {
-                            "type": "boolean",
-                            "description": "Run the agent in the background (returns output_file path to check later). If this is false, you will be blocked until the agent completes."
-                    },
-                    "resume": {
-                            "type": "string",
-                            "description": "Optional agent ID to resume from. If provided, sends a follow-up message to the agent when its turn is complete. Use \"self\" to start a new agent with your own entire conversation history as a starting point (aka 'self-fork')."
-                    },
-                    "attachments": {
-                            "type": "array",
-                            "description": "Optional array of file paths to videos to pass to video-review subagents. Files are read and attached to the subagent's context. Supports video formats (mp4, webm) for Gemini models.",
-                            "items": {
-                                    "type": "string"
-                            }
-                    }
-            }
+  inputSchema: {
+    type: 'object',
+    required: [
+      'description',
+      'prompt',
+    ],
+    properties: {
+      description: {
+        type: 'string',
+        description: 'A short (3-5 word) description of the task',
+      },
+      prompt: {
+        type: 'string',
+        description: 'The task for the agent to perform',
+      },
+      subagent_type: {
+        type: 'string',
+        enum: [
+          'generalPurpose',
+          'explore',
+          'shell',
+          'best-of-n-runner',
+          'security-review',
+          'cursorBlameLearning',
+        ],
+        description: 'Subagent type to use for this task.',
+      },
+      model: {
+        type: 'string',
+        enum: [
+          'fast',
+        ],
+        description: 'Optional model to use for this agent. If not specified, inherits from parent. Prefer fast for quick, straightforward tasks to minimize cost and latency. Only select a different model when the task specifically benefits from it (e.g., deep reasoning, high-quality code review, multimodal input)',
+      },
+      readonly: {
+        type: 'boolean',
+        description: 'If true, the subagent will run in readonly mode ("Ask mode") with restricted write operations and no MCP access.',
+      },
+      run_in_background: {
+        type: 'boolean',
+        description: 'Run the agent in the background (returns output_file path to check later). If this is false, you will be blocked until the agent completes.',
+      },
+      resume: {
+        type: 'string',
+        description: 'Optional agent ID to resume from. If provided, sends a follow-up message to the agent when its turn is complete. Use "self" to start a new agent with your own entire conversation history as a starting point (aka \'self-fork\').',
+      },
+      attachments: {
+        type: 'array',
+        description: 'Optional array of file paths to videos to pass to video-review subagents. Files are read and attached to the subagent\'s context. Supports video formats (mp4, webm) for Gemini models.',
+        items: {
+          type: 'string',
+        },
+      },
     },
-};
+  },
+}
 
 const OPENAI = {
-    name: 'Subagent',
-    description: `Launch a new agent to handle complex, multi-step tasks autonomously.
+  name: 'Subagent',
+  description: `Launch a new agent to handle complex, multi-step tasks autonomously.
 
 The Subagent tool launches specialized subagents (subprocesses) that autonomously handle complex tasks. Each subagent_type has specific capabilities and tools available to it.
 
@@ -198,64 +198,64 @@ Available models:
 When speaking to the USER about which model you selected for a Task/subagent, do NOT reveal these internal model alias names. Instead, use natural language such as "a faster model", "a more capable model", or "the default model".
 
 When choosing a model, prefer \`fast\` for quick, straightforward tasks to minimize cost and latency. Only select a different model when there is a specific reason — for example, the task requires deep multi-step reasoning, very high code quality, multimodal understanding, or the user explicitly requests a more capable model.`,
-    inputSchema: {
-            "type": "object",
-            "properties": {
-                    "description": {
-                            "type": "string",
-                            "description": "A short (3-5 words) description of the task"
-                    },
-                    "prompt": {
-                            "type": "string",
-                            "description": "The task for the agent to perform"
-                    },
-                    "model": {
-                            "type": "string",
-                            "description": "Optional model to use for this agent. If not specified, inherits from parent. Prefer fast for quick, straightforward tasks to minimize cost and latency. Only select a different model when the task specifically benefits from it (e.g., deep reasoning, high-quality code review, multimodal input)",
-                            "enum": [
-                                    "fast"
-                            ]
-                    },
-                    "resume": {
-                            "type": "string",
-                            "description": "Optional agent ID to resume from. If provided, sends a follow-up message to the agent when its turn is complete. Use \"self\" to start a new agent with your own entire conversation history as a starting point (aka 'self-fork')."
-                    },
-                    "readonly": {
-                            "type": "boolean",
-                            "description": "If true, the subagent will run in readonly mode (\"Ask mode\") with restricted write operations and no MCP access."
-                    },
-                    "subagent_type": {
-                            "type": "string",
-                            "description": "Subagent type to use for this task. Must be one of: generalPurpose, explore, shell, best-of-n-runner.",
-                            "enum": [
-                                    "generalPurpose",
-                                    "explore",
-                                    "shell",
-                                    "best-of-n-runner"
-                            ]
-                    },
-                    "attachments": {
-                            "type": "array",
-                            "description": "Optional array of file paths to videos to pass to video-review subagents. Files are read and attached to the subagent's context. Supports video formats (mp4, webm) for Gemini models.",
-                            "items": {
-                                    "type": "string"
-                            }
-                    },
-                    "run_in_background": {
-                            "type": "boolean",
-                            "description": "Run the agent in the background (returns output_file path to check later). If this is false, you will be blocked until the agent completes."
-                    }
-            },
-            "required": [
-                    "description",
-                    "prompt"
-            ]
+  inputSchema: {
+    type: 'object',
+    properties: {
+      description: {
+        type: 'string',
+        description: 'A short (3-5 words) description of the task',
+      },
+      prompt: {
+        type: 'string',
+        description: 'The task for the agent to perform',
+      },
+      model: {
+        type: 'string',
+        description: 'Optional model to use for this agent. If not specified, inherits from parent. Prefer fast for quick, straightforward tasks to minimize cost and latency. Only select a different model when the task specifically benefits from it (e.g., deep reasoning, high-quality code review, multimodal input)',
+        enum: [
+          'fast',
+        ],
+      },
+      resume: {
+        type: 'string',
+        description: 'Optional agent ID to resume from. If provided, sends a follow-up message to the agent when its turn is complete. Use "self" to start a new agent with your own entire conversation history as a starting point (aka \'self-fork\').',
+      },
+      readonly: {
+        type: 'boolean',
+        description: 'If true, the subagent will run in readonly mode ("Ask mode") with restricted write operations and no MCP access.',
+      },
+      subagent_type: {
+        type: 'string',
+        description: 'Subagent type to use for this task. Must be one of: generalPurpose, explore, shell, best-of-n-runner.',
+        enum: [
+          'generalPurpose',
+          'explore',
+          'shell',
+          'best-of-n-runner',
+        ],
+      },
+      attachments: {
+        type: 'array',
+        description: 'Optional array of file paths to videos to pass to video-review subagents. Files are read and attached to the subagent\'s context. Supports video formats (mp4, webm) for Gemini models.',
+        items: {
+          type: 'string',
+        },
+      },
+      run_in_background: {
+        type: 'boolean',
+        description: 'Run the agent in the background (returns output_file path to check later). If this is false, you will be blocked until the agent completes.',
+      },
     },
-};
+    required: [
+      'description',
+      'prompt',
+    ],
+  },
+}
 
 const GEMINI = {
-    name: 'Task',
-    description: `Launch a new agent to handle complex, multi-step tasks autonomously.
+  name: 'Task',
+  description: `Launch a new agent to handle complex, multi-step tasks autonomously.
 
 The Task tool launches specialized subagents (subprocesses) that autonomously handle complex tasks. Each subagent_type has specific capabilities and tools available to it.
 
@@ -305,110 +305,111 @@ Available models:
 When speaking to the USER about which model you selected for a Task/subagent, do NOT reveal these internal model alias names. Instead, use natural language such as "a faster model", "a more capable model", or "the default model".
 
 When choosing a model, prefer \`fast\` for quick, straightforward tasks to minimize cost and latency. Only choose a named alternative model when there is a specific reason — for example, the task requires deep multi-step reasoning, very high code quality, multimodal understanding, or the user explicitly requests a more capable model.`,
-    inputSchema: {
-            "type": "OBJECT",
-            "properties": {
-                    "attachments": {
-                            "type": "ARRAY",
-                            "description": "Optional array of file paths to videos to pass to video-review subagents. Files are read and attached to the subagent's context. Supports video formats (mp4, webm) for Gemini models.",
-                            "items": {
-                                    "type": "STRING"
-                            }
-                    },
-                    "description": {
-                            "type": "STRING",
-                            "description": "A short (3-5 word) description of the task"
-                    },
-                    "model": {
-                            "type": "STRING",
-                            "enum": [
-                                    "fast"
-                            ],
-                            "description": "Optional model to use for this agent. If not specified, inherits from parent. Prefer fast for quick, straightforward tasks to minimize cost and latency. Only select a different model when the task specifically benefits from it (e.g., deep reasoning, high-quality code review, multimodal input)"
-                    },
-                    "prompt": {
-                            "type": "STRING",
-                            "description": "The task for the agent to perform"
-                    },
-                    "readonly": {
-                            "type": "BOOLEAN",
-                            "description": "If true, the subagent will run in readonly mode (\"Ask mode\") with restricted write operations and no MCP access."
-                    },
-                    "resume": {
-                            "type": "STRING",
-                            "description": "Optional agent ID to resume from. If provided, sends a follow-up message to the agent when its turn is complete. Use \"self\" to start a new agent with your own entire conversation history as a starting point (aka 'self-fork')."
-                    },
-                    "run_in_background": {
-                            "type": "BOOLEAN",
-                            "description": "Run the agent in the background (returns output_file path to check later). If this is false, you will be blocked until the agent completes."
-                    },
-                    "subagent_type": {
-                            "type": "STRING",
-                            "enum": [
-                                    "generalPurpose",
-                                    "explore",
-                                    "shell",
-                                    "best-of-n-runner",
-                                    "security-review",
-                                    "cursorBlameLearning"
-                            ],
-                            "description": "Subagent type to use for this task."
-                    }
-            },
-            "required": [
-                    "description",
-                    "prompt"
-            ]
+  inputSchema: {
+    type: 'OBJECT',
+    properties: {
+      attachments: {
+        type: 'ARRAY',
+        description: 'Optional array of file paths to videos to pass to video-review subagents. Files are read and attached to the subagent\'s context. Supports video formats (mp4, webm) for Gemini models.',
+        items: {
+          type: 'STRING',
+        },
+      },
+      description: {
+        type: 'STRING',
+        description: 'A short (3-5 word) description of the task',
+      },
+      model: {
+        type: 'STRING',
+        enum: [
+          'fast',
+        ],
+        description: 'Optional model to use for this agent. If not specified, inherits from parent. Prefer fast for quick, straightforward tasks to minimize cost and latency. Only select a different model when the task specifically benefits from it (e.g., deep reasoning, high-quality code review, multimodal input)',
+      },
+      prompt: {
+        type: 'STRING',
+        description: 'The task for the agent to perform',
+      },
+      readonly: {
+        type: 'BOOLEAN',
+        description: 'If true, the subagent will run in readonly mode ("Ask mode") with restricted write operations and no MCP access.',
+      },
+      resume: {
+        type: 'STRING',
+        description: 'Optional agent ID to resume from. If provided, sends a follow-up message to the agent when its turn is complete. Use "self" to start a new agent with your own entire conversation history as a starting point (aka \'self-fork\').',
+      },
+      run_in_background: {
+        type: 'BOOLEAN',
+        description: 'Run the agent in the background (returns output_file path to check later). If this is false, you will be blocked until the agent completes.',
+      },
+      subagent_type: {
+        type: 'STRING',
+        enum: [
+          'generalPurpose',
+          'explore',
+          'shell',
+          'best-of-n-runner',
+          'security-review',
+          'cursorBlameLearning',
+        ],
+        description: 'Subagent type to use for this task.',
+      },
     },
-};
+    required: [
+      'description',
+      'prompt',
+    ],
+  },
+}
 
 export const TaskTool: ToolRegistryEntry = {
-    canonicalName: 'Task',
-    aliases: ["Task","Subagent"],
-    cursorToolType: 'taskToolCall',
-    execArgsType: 'subagentArgs',
-    llmToolByProvider: {
-        anthropic: ANTHROPIC,
-        openai: OPENAI,
-        gemini: GEMINI,
-    },
-    buildStartedArgs: (input) => {
-        const subagentTypeName = str(input.subagent_type ?? input.subagentType, 'explore');
-        const subagentType = buildTaskSubagentType(subagentTypeName);
-        return {
-            description: str(input.description),
-            prompt: str(input.prompt),
-            ...(subagentType ? { subagentType } : {}),
-            ...(typeof input.resume === 'string' ? { resume: input.resume } : {}),
-            ...(typeof input.agentId === 'string' ? { agentId: input.agentId } : {}),
-        };
-    },
-    buildExecArgs: (input, callId, options = {}) => {
-        const subagentType = typeof input.subagent_type === 'string'
-            ? input.subagent_type
-            : typeof input.subagentType === 'string'
-                ? input.subagentType
-                : 'explore';
-        const modelId = options.currentModelId || '';
-        // resume="self" 是官方 Task schema 的 self-fork 语义(见 resume 参数描述):
-        // 把当前父对话 fork 成新子 agent。客户端 createOrResumeSubagent 收到 forkAgentId 后
-        // deepCloneComposer 复制当前对话历史 —— 而非 resume 一个名为 "self" 的 agent
-        // (若误当 resumeAgentId="self",客户端 getComposerHandleById("self") 找不到会报错)。
-        const isSelfFork = typeof input.resume === 'string' && input.resume.trim().toLowerCase() === 'self'
-        return {
-            toolCallId: callId,
-            subagentType,
-            modelId,
-            prompt: input.prompt || input.description || '',
-            // proto3 bool 默认 false — LLM 不传 readonly 时 subagent 可读写(Agent 模式)
-            readonly: input.readonly ?? false,
-            // self-fork → forkAgentId=当前 conversationId;普通 resume → resumeAgentId
-            ...(isSelfFork
-                ? (options.conversationId ? { forkAgentId: options.conversationId } : {})
-                : typeof input.resume === 'string' ? { resumeAgentId: input.resume } : {}),
-            ...(typeof input.run_in_background === 'boolean' || typeof input.runInBackground === 'boolean'
-                ? { runInBackground: input.run_in_background ?? input.runInBackground } : {}),
-            ...(options.conversationId ? { parentConversationId: options.conversationId } : {}),
-        };
-    },
-};
+  canonicalName: 'Task',
+  aliases: ['Task', 'Subagent'],
+  cursorToolType: 'taskToolCall',
+  execArgsType: 'subagentArgs',
+  llmToolByProvider: {
+    anthropic: ANTHROPIC,
+    openai: OPENAI,
+    gemini: GEMINI,
+  },
+  buildStartedArgs: (input) => {
+    const subagentTypeName = str(input.subagent_type ?? input.subagentType, 'explore')
+    const subagentType = buildTaskSubagentType(subagentTypeName)
+    return {
+      description: str(input.description),
+      prompt: str(input.prompt),
+      ...(subagentType ? { subagentType } : {}),
+      ...(typeof input.resume === 'string' ? { resume: input.resume } : {}),
+      ...(typeof input.agentId === 'string' ? { agentId: input.agentId } : {}),
+    }
+  },
+  buildExecArgs: (input, callId, options = {}) => {
+    const subagentType = typeof input.subagent_type === 'string'
+      ? input.subagent_type
+      : typeof input.subagentType === 'string'
+        ? input.subagentType
+        : 'explore'
+    const modelId = options.currentModelId || ''
+    // resume="self" 是官方 Task schema 的 self-fork 语义(见 resume 参数描述):
+    // 把当前父对话 fork 成新子 agent。客户端 createOrResumeSubagent 收到 forkAgentId 后
+    // deepCloneComposer 复制当前对话历史 —— 而非 resume 一个名为 "self" 的 agent
+    // (若误当 resumeAgentId="self",客户端 getComposerHandleById("self") 找不到会报错)。
+    const isSelfFork = typeof input.resume === 'string' && input.resume.trim().toLowerCase() === 'self'
+    return {
+      toolCallId: callId,
+      subagentType,
+      modelId,
+      prompt: input.prompt || input.description || '',
+      // proto3 bool 默认 false — LLM 不传 readonly 时 subagent 可读写(Agent 模式)
+      readonly: input.readonly ?? false,
+      // self-fork → forkAgentId=当前 conversationId;普通 resume → resumeAgentId
+      ...(isSelfFork
+        ? (options.conversationId ? { forkAgentId: options.conversationId } : {})
+        : typeof input.resume === 'string' ? { resumeAgentId: input.resume } : {}),
+      ...(typeof input.run_in_background === 'boolean' || typeof input.runInBackground === 'boolean'
+        ? { runInBackground: input.run_in_background ?? input.runInBackground }
+        : {}),
+      ...(options.conversationId ? { parentConversationId: options.conversationId } : {}),
+    }
+  },
+}

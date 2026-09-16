@@ -16,23 +16,23 @@
  *
  * 注意: 此服务需要远程 VM/sandbox 环境，超出 BYOK 范围
  */
-import type { ConnectRouter } from '@connectrpc/connect';
-import { BackgroundComposerService } from '../../gen/aiserver_v1_pb';
+import type { ConnectRouter } from '@connectrpc/connect'
+import { BackgroundComposerService } from '../../gen/aiserver_v1_pb'
 
 export default (router: ConnectRouter) => {
-    router.service(BackgroundComposerService, {
-        // CloudAgentRepository 启动时会调 listBackgroundComposers 获取云端 agent 列表。
-        // BYOK 模式下没有云端 agent,返回空列表消除 invalid_argument 错误。
-        listBackgroundComposers: async () => ({ composers: [], didLoadStatus: true }),
-        listDetailedBackgroundComposers: async () => ({ composers: [] }),
-        fetchBackgroundComposer: async () => ({}),
-        getBackgroundComposerInfo: async () => ({}),
-        getBackgroundComposerStatus: async () => ({}),
-        getBackgroundComposerUserSettings: async () => ({}),
-        getMachine: async () => ({}),
-        listTeamEnvironments: async () => ({ environments: [] }),
-        listPersonalEnvironments: async () => ({ environments: [] }),
-        listPendingFollowups: async () => ({ pendingFollowups: [] }),
-        listGrindModeComposers: async () => ({ composers: [] }),
-    });
-};
+  router.service(BackgroundComposerService, {
+    // CloudAgentRepository 启动时会调 listBackgroundComposers 获取云端 agent 列表。
+    // BYOK 模式下没有云端 agent,返回空列表消除 invalid_argument 错误。
+    listBackgroundComposers: async () => ({ composers: [], didLoadStatus: true }),
+    listDetailedBackgroundComposers: async () => ({ composers: [] }),
+    fetchBackgroundComposer: async () => ({}),
+    getBackgroundComposerInfo: async () => ({}),
+    getBackgroundComposerStatus: async () => ({}),
+    getBackgroundComposerUserSettings: async () => ({}),
+    getMachine: async () => ({}),
+    listTeamEnvironments: async () => ({ environments: [] }),
+    listPersonalEnvironments: async () => ({ environments: [] }),
+    listPendingFollowups: async () => ({ pendingFollowups: [] }),
+    listGrindModeComposers: async () => ({ composers: [] }),
+  })
+}

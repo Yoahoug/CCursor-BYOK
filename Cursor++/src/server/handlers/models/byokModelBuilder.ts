@@ -24,12 +24,12 @@ import {
   AvailableModelsResponse_DegradationStatus,
   AvailableModelsResponse_ModelVariantConfigSchema,
   AvailableModelsResponse_TooltipDataSchema,
-  ModelParameterDefinitionSchema,
-  ModelParameterDefinition_BooleanParameterDefinitionSchema,
   ModelParameterDefinition_BooleanParameterDefinition_BooleanParameterValueSchema,
-  ModelParameterDefinition_EnumParameterDefinitionSchema,
+  ModelParameterDefinition_BooleanParameterDefinitionSchema,
   ModelParameterDefinition_EnumParameterDefinition_EnumParameterValueSchema,
+  ModelParameterDefinition_EnumParameterDefinitionSchema,
   ModelParameterDefinition_ModelParameterTypeSchema,
+  ModelParameterDefinitionSchema,
 } from '../../gen/aiserver_v1_pb'
 
 const VARIANT_SUFFIX_STYLE = 'color: var(--cursor-text-tertiary); font-size: 0.85em;'
@@ -108,7 +108,7 @@ function makeBoolParamDef(id: string, name: string, tooltip?: string): ModelPara
   })
 }
 
-type ParamAxis = { id: string, values: string[] }
+interface ParamAxis { id: string, values: string[] }
 
 function buildParameterDefinitions(
   provider: ProviderEntry,
@@ -267,8 +267,9 @@ function isDefaultCombo(combo: VariantCombo, model: ProviderModel, providerType:
           if (val !== model.thinkingLevel)
             return false
         }
-        else if (val !== 'none')
+        else if (val !== 'none') {
           return false
+        }
         break
       case 'thinking':
         if (val !== String(!!model.thinking))
@@ -321,10 +322,12 @@ function buildLegacySuffix(model: ProviderModel): string | null {
       const label = LEVEL_LABELS[model.thinkingLevel.toLowerCase()] ?? model.thinkingLevel
       segments.push(`:icon-brain: ${label}`)
     }
-    else if (model.thinkingBudgetTokens !== undefined && model.thinkingBudgetTokens > 0)
+    else if (model.thinkingBudgetTokens !== undefined && model.thinkingBudgetTokens > 0) {
       segments.push(`:icon-brain: ${formatBudgetLabel(model.thinkingBudgetTokens)}`)
-    else
+    }
+    else {
       segments.push(':icon-brain:')
+    }
   }
   if (model.fastMode)
     segments.push('Fast')

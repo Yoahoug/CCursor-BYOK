@@ -1,9 +1,9 @@
-import { str } from '../shared';
-import type { ToolRegistryEntry } from '../types';
+import type { ToolRegistryEntry } from '../types'
+import { str } from '../shared'
 
 const ANTHROPIC = {
-    name: 'WebFetch',
-    description: `Fetch content from a specified URL and return its contents in a readable markdown format. Use this tool when you need to retrieve and analyze webpage content.
+  name: 'WebFetch',
+  description: `Fetch content from a specified URL and return its contents in a readable markdown format. Use this tool when you need to retrieve and analyze webpage content.
 
 - The URL must be a fully-formed, valid URL.
 - This tool is read-only and will not work for requests intended to have side effects.
@@ -13,23 +13,23 @@ const ANTHROPIC = {
 - This fetch runs from an isolated server. Hosts like localhost or private IPs will not work.
 - This tool does not support fetching binary content, e.g. media or PDFs.
 - For static assets and non-webpage URLs, use the \`Shell\` tool instead.`,
-    inputSchema: {
-            "type": "object",
-            "required": [
-                    "url"
-            ],
-            "properties": {
-                    "url": {
-                            "type": "string",
-                            "description": "The URL to fetch. The content will be converted to a readable markdown format."
-                    }
-            }
+  inputSchema: {
+    type: 'object',
+    required: [
+      'url',
+    ],
+    properties: {
+      url: {
+        type: 'string',
+        description: 'The URL to fetch. The content will be converted to a readable markdown format.',
+      },
     },
-};
+  },
+}
 
 const OPENAI = {
-    name: 'WebFetch',
-    description: `Fetch content from a specified URL and return its contents in a readable markdown format. Use this tool when you need to retrieve and analyze webpage content.
+  name: 'WebFetch',
+  description: `Fetch content from a specified URL and return its contents in a readable markdown format. Use this tool when you need to retrieve and analyze webpage content.
 
 - The URL must be a fully-formed, valid URL.
 - This fetch tries to return live results but may return previously cached content.
@@ -38,23 +38,23 @@ const OPENAI = {
 - This fetch runs from an isolated server. Hosts like localhost or private IPs will not work.
 - This tool does not support fetching binary content, e.g. media or PDFs.
 - For static assets and non-webpage URLs, use the \`Shell\` tool instead.`,
-    inputSchema: {
-            "type": "object",
-            "properties": {
-                    "url": {
-                            "type": "string",
-                            "description": "The URL to fetch. The content will be converted to a readable markdown format."
-                    }
-            },
-            "required": [
-                    "url"
-            ]
+  inputSchema: {
+    type: 'object',
+    properties: {
+      url: {
+        type: 'string',
+        description: 'The URL to fetch. The content will be converted to a readable markdown format.',
+      },
     },
-};
+    required: [
+      'url',
+    ],
+  },
+}
 
 const GEMINI = {
-    name: 'WebFetch',
-    description: `Fetch content from a specified URL and return its contents in a readable markdown format. Use this tool when you need to retrieve and analyze webpage content.
+  name: 'WebFetch',
+  description: `Fetch content from a specified URL and return its contents in a readable markdown format. Use this tool when you need to retrieve and analyze webpage content.
 
 - The URL must be a fully-formed, valid URL.
 - This tool is read-only and will not work for requests intended to have side effects.
@@ -65,32 +65,32 @@ const GEMINI = {
 - This tool does not support fetching binary content, e.g. media or PDFs.
 - For static assets and non-webpage URLs, use the \`Shell\` tool instead.
 `,
-    inputSchema: {
-            "type": "OBJECT",
-            "properties": {
-                    "url": {
-                            "type": "STRING",
-                            "description": "The URL to fetch. The content will be converted to a readable markdown format."
-                    }
-            },
-            "required": [
-                    "url"
-            ]
+  inputSchema: {
+    type: 'OBJECT',
+    properties: {
+      url: {
+        type: 'STRING',
+        description: 'The URL to fetch. The content will be converted to a readable markdown format.',
+      },
     },
-};
+    required: [
+      'url',
+    ],
+  },
+}
 
 export const WebFetchTool: ToolRegistryEntry = {
-    canonicalName: 'WebFetch',
-    aliases: ["WebFetch"],
-    cursorToolType: 'webFetchToolCall',
-    execArgsType: null,
-    llmToolByProvider: {
-        anthropic: ANTHROPIC,
-        openai: OPENAI,
-        gemini: GEMINI,
-    },
-    buildStartedArgs: (input, callId) => ({
-        url: str(input.url),
-        toolCallId: callId,
-    }),
-};
+  canonicalName: 'WebFetch',
+  aliases: ['WebFetch'],
+  cursorToolType: 'webFetchToolCall',
+  execArgsType: null,
+  llmToolByProvider: {
+    anthropic: ANTHROPIC,
+    openai: OPENAI,
+    gemini: GEMINI,
+  },
+  buildStartedArgs: (input, callId) => ({
+    url: str(input.url),
+    toolCallId: callId,
+  }),
+}
