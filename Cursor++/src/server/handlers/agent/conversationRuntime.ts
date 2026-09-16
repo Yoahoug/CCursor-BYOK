@@ -1,5 +1,5 @@
 import type { AgentServerMessage } from '../../gen/agent_v1_pb'
-import type { LLMContentBlock, LLMMessage, LLMTool } from '../llm/types'
+import type { LLMContentBlock, LLMMessage } from '../llm/types'
 import type { BreakdownCategory } from './contextBreakdown'
 import type { EditStreamDiagnostics } from './editStreamDiagnostics'
 import type { ParsedRunRequest } from './protocol'
@@ -21,7 +21,7 @@ import { createCompactionArtifacts, estimateMessagesTokens, formatMessageForSumm
 import { buildContextBreakdown } from './contextBreakdown'
 import { contextualizeDynamicMetaTools, partitionCursorBuiltinTools, shouldEnableBuiltinDynamicProfile } from './dynamicTools'
 import { editNewlineStats, editToolTargetStats } from './editStreamDiagnostics'
-import { detectEditPathFromToolInput, EditDeltaExtractor, normalizeDetectedEditPath } from './editStreamExtractor'
+import { EditDeltaExtractor, normalizeDetectedEditPath } from './editStreamExtractor'
 import { flushMessageBlobs, hydrateHistoryEntries, rebuildConversationHistory, repairHistoryEntries, sendAndCacheBlob } from './historyManager'
 import { buildMessages, workspaceUris } from './protocol'
 import { isSessionCancelled } from './session'
@@ -737,8 +737,12 @@ export async function* handleConversationRun(
               // 权威参数: done 事件携带的完整 arguments > delta 累积
               const rawArgs = event.arguments ?? current.input ?? ''
               let input: Record<string, unknown> = {}
-              try { input = JSON.parse(rawArgs) }
-              catch {}
+              try {
+                input = JSON.parse(rawArgs)
+              }
+              catch {
+                // 参数不是合法 JSON —— 保持空对象，后续按缺参数处理
+              }
               if (EDIT_TOOL_NAMES.has(current.name)) {
                 // 同一个 streamContent 只统计一次。原先 stats / mixed /
                 // maxConsecutiveBlankLines 各调一次 editNewlineStats，而它内部要

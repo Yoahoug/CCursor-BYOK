@@ -114,6 +114,8 @@ export default (router: ConnectRouter) => {
         appJsGzip: req.appJs,
         dataJson: req.dataJson,
       })
+      // 文件名净化：剔除 Windows 保留字符与控制字符（\x00-\x1F 是文件名非法字符）
+      // eslint-disable-next-line no-control-regex -- 控制字符正是要剔除的目标
       const safeName = (req.title || 'canvas').replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim() || 'canvas'
       const exportPath = join(getCanvasesDir(), `${safeName}.html`)
       writeFileSync(exportPath, html)

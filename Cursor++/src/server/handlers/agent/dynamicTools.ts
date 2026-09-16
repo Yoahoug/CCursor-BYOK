@@ -1,5 +1,3 @@
-import type { LLMTool } from '../llm/types'
-import type { McpStateServerInfo, McpStateToolDefinition } from './mcpState'
 /**
  * Dynamic Tools — GetDynamicTools 结果渲染
  *
@@ -18,6 +16,8 @@ import type { McpStateServerInfo, McpStateToolDefinition } from './mcpState'
  *   - search / catalog 的 description 超过 200 字符时截断为
  *     slice(0,185) + "... [truncated]",总长恰好 200。
  */
+import type { LLMTool } from '../llm/types'
+import type { McpStateServerInfo, McpStateToolDefinition } from './mcpState'
 import { randomUUID } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -228,7 +228,8 @@ export function validateDynamicToolsQuery(query: DynamicToolsQuery): string | un
   if (query.pattern.length > 256)
     return 'pattern cannot exceed 256 characters.'
   try {
-    new RegExp(query.pattern)
+    // 只借 RegExp 构造函数做合法性校验，不保留实例
+    void new RegExp(query.pattern)
     return undefined
   }
   catch (error) {
@@ -313,6 +314,7 @@ function namespaceMeta(
 /**
  * 渲染 GetDynamicTools 的返回体。
  *
+ * @param query 本次 discovery 的查询条件（namespace / toolName / pattern）
  * @param namespaces 本次查询范围内、已取回完整 schema 的 namespace
  */
 export function renderDynamicToolsResult(

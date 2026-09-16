@@ -1,16 +1,14 @@
 import type { SearchProviderEntry, WebToolsConfig } from '../../data/defaults'
 import { getFetchConfig, getSearchConfig } from '../../config/searchConfigStore'
 import { logger } from '../../logger'
-
-// ── Search: multi-provider dispatch ──
-
 import { loadSupermarkdown, supermarkdownUnavailableMessage } from './supermarkdown'
 
 const FETCH_TIMEOUT_MS = 30_000
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 const MAX_MARKDOWN_CHARS = 100_000
 const CACHE_TTL_MS = 5 * 60_000
-const BINARY_TYPES = /^(image|video|audio|application\/pdf|application\/octet-stream|application\/zip)/
+/** 二进制内容类型判定 —— 不捕获分组，只用它做 test */
+const BINARY_TYPES = /^(?:image|video|audio|application\/pdf|application\/octet-stream|application\/zip)/
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Cursor/3.4 Chrome/131.0.0.0 Safari/537.36'
 
 const EXCLUDE_SELECTORS = [
@@ -168,6 +166,17 @@ function htmlToMarkdown(html: string, sourceUrl: string): string {
   }
 }
 
+/**
+ * 无 supermarkdown 时的 HTML 纯文本降级。
+ *
+ * 当前**没有调用点**：`htmlToMarkdown` 在原生模块不可用时直接抛错，这是
+ * 0.0.16 刻意定下的行为（宁可可见地失败，也不要静默返回劣质正文）。
+ * 保留实现是因为它是唯一一条"模块缺失时仍能取到正文"的路径，删掉会让
+ * 将来想启用降级时无从下手。
+ *
+ * eslint 的 unused 告警在此局部关闭，避免它掩盖同目录真正的死代码。
+ */
+// eslint-disable-next-line unused-imports/no-unused-vars -- 刻意保留的降级路径，见上
 function fallbackStripHtml(html: string, sourceUrl: string): string {
   const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
   const title = titleMatch ? decodeHtmlEntities(titleMatch[1].replace(/<[^>]+>/g, '')).trim() : sourceUrl
@@ -220,10 +229,16 @@ async function fetchBuiltin(url: string): Promise<{ url: string, markdown: strin
       markdown = htmlToMarkdown(text, finalUrl)
     }
     else if (contentType.includes('application/json')) {
-      try { markdown = `# ${finalUrl}\n\n\`\`\`json\n${JSON.stringify(JSON.parse(text), null, 2).slice(0, MAX_MARKDOWN_CHARS)}\n\`\`\`` }
-      catch { markdown = `# ${finalUrl}\n\n\`\`\`\n${text.slice(0, MAX_MARKDOWN_CHARS)}\n\`\`\`` }
+      try {
+        markdown = `# ${finalUrl}\n\n\`\`\`json\n${JSON.stringify(JSON.parse(text), null, 2).slice(0, MAX_MARKDOWN_CHARS)}\n\`\`\``
+      }
+      catch {
+        markdown = `# ${finalUrl}\n\n\`\`\`\n${text.slice(0, MAX_MARKDOWN_CHARS)}\n\`\`\``
+      }
     }
-    else { markdown = `# ${finalUrl}\n\n${text.slice(0, MAX_MARKDOWN_CHARS)}` }
+    else {
+      markdown = `# ${finalUrl}\n\n${text.slice(0, MAX_MARKDOWN_CHARS)}`
+    }
     return { url: finalUrl, markdown }
   }
   finally { clearTimeout(timer) }
@@ -451,13 +466,16 @@ async function searchDuckDuckGo(searchTerm: string, max: number): Promise<Search
     throw new Error('DDG search blocked by anti-bot challenge; configure an API search provider instead')
   const refs: SearchRef[] = []
   const regex = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]{0,1200}?(?:<a[^>]+class="result__snippet"[^>]*>|<div[^>]+class="result__snippet"[^>]*>)([\s\S]*?)(?:<\/a>|<\/div>)/gi
-  let match: RegExpExecArray | null
-  while ((match = regex.exec(html)) && refs.length < max) {
+  // exec 在循环条件里取下一个匹配 —— 把赋值摊到循环体外，避免
+  // 条件表达式里的副作用（no-cond-assign 拦的正是这种读不出意图的写法）。
+  let match: RegExpExecArray | null = regex.exec(html)
+  while (match && refs.length < max) {
     const href = decodeDuckDuckGoHref(match[1])
     const title = stripTags(match[2])
     const chunk = stripTags(match[3]).slice(0, 400)
     if (title && href)
       refs.push({ title, url: href, chunk })
+    match = regex.exec(html)
   }
   return refs
 }

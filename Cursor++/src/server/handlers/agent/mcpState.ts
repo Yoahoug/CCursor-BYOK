@@ -1,5 +1,3 @@
-import type { AgentServerMessage } from '../../gen/agent_v1_pb'
-import type { AgentSession } from './session'
 /**
  * mcpState exec 通道 — MCP 工具完整 schema 的唯一来源
  *
@@ -20,6 +18,8 @@ import type { AgentSession } from './session'
  *   - **不做缓存**: 同一轮里 4 次 GetDynamicTools 查询实打实发了 4 次 mcpStateExecArgs。
  *     这里照此复刻,不加 session 级缓存,以免与官方行为产生偏离。
  */
+import type { AgentServerMessage } from '../../gen/agent_v1_pb'
+import type { AgentSession } from './session'
 import { logger } from '../../logger'
 import { execMessage } from './stream'
 import { waitForExecClientMessageWithHeartbeat } from './wait'
@@ -138,8 +138,6 @@ function normalizeInputSchema(tool: Record<string, unknown>): Record<string, unk
  *
  * 作为 async generator: yield 出去的是要发给客户端的帧与心跳,return 的才是结果。
  * 取不到时返回 null —— 调用方应把它渲染成 namespaceStatus 异常而非中断对话。
- *
- * @param serverIdentifiers 为空数组表示"要全部" (search / catalog 模式)
  */
 export async function* fetchMcpState(params: {
   session: AgentSession | null

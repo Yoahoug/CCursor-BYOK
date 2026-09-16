@@ -723,7 +723,10 @@ export async function* translateStream(
 
     const sideFrames = onEvent?.(event)
     if (sideFrames) {
-      if (Array.isArray(sideFrames)) { for (const f of sideFrames) yield f }
+      if (Array.isArray(sideFrames)) {
+        for (const f of sideFrames)
+          yield f
+      }
       else {
         yield sideFrames
       }

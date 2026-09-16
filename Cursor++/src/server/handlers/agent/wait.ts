@@ -118,14 +118,18 @@ export async function* waitForPromiseWithHeartbeat<T>(
     },
   )
 
-  while (!settled) {
+  // settled 由上面 wrapped 的两个回调异步赋值。这里刻意不把它写进循环条件：
+  // 条件里的变量不参与循环体求值，读起来像"永不退出"（no-unmodified-loop-condition
+  // 拦的正是这种情况）。改为显式 break，语义完全一致。
+  for (;;) {
     const raced = await Promise.race([
       wrapped.then(() => 'done' as const),
       delay(intervalMs).then(() => 'tick' as const),
     ])
-    if (raced === 'tick' && !settled) {
+    if (settled)
+      break
+    if (raced === 'tick')
       yield heartbeat()
-    }
   }
 
   if (failure !== undefined)

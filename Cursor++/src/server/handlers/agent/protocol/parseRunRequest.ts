@@ -706,8 +706,12 @@ export function parseRunRequest(msg: Record<string, unknown>): ParsedRunRequest 
         ? Buffer.from(raw).toString('utf-8')
         : typeof raw === 'string'
           ? (() => {
-              try { return Buffer.from(raw, 'base64').toString('utf-8') }
-              catch { return raw }
+              try {
+                return Buffer.from(raw, 'base64').toString('utf-8')
+              }
+              catch {
+                return raw
+              }
             })()
           : ''
       return { blobId }

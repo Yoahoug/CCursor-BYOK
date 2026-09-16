@@ -1,6 +1,6 @@
 import type { AgentServerMessage } from '../../gen/agent_v1_pb'
 import type { AgentSession } from './session'
-import { clearPersistedConversationCheckpoint, getPersistedConversationCheckpoint } from '../../database/checkpoints'
+import { getPersistedConversationCheckpoint } from '../../database/checkpoints'
 import { logger } from '../../logger'
 import { warmupBlobsAsync } from './blobStore'
 import { handleConversationRun } from './conversationRuntime'

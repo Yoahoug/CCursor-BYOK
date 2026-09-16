@@ -1,5 +1,5 @@
 import type { ToolRegistryEntry } from '../types'
-import { arr, str } from '../shared'
+import { str } from '../shared'
 
 /**
  * SemanticSearch — 语义搜索工具

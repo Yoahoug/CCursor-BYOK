@@ -1,14 +1,5 @@
 import type { ToolResultEnvelope } from './shared'
-import {
-  arr,
-  bool,
-  envelope,
-  obj,
-  resultCase,
-  str,
-  truncate,
-
-} from './shared'
+import { arr, bool, envelope, obj, resultCase, str, truncate } from './shared'
 
 /**
  * MCP image data 防御性处理: proto McpImageContent.data 是 bytes,
@@ -22,8 +13,12 @@ export function normalizeImageData(raw: unknown): Uint8Array {
   if (Buffer.isBuffer(raw))
     return new Uint8Array(raw)
   if (typeof raw === 'string') {
-    try { return new Uint8Array(Buffer.from(raw, 'base64')) }
-    catch { return new Uint8Array(Buffer.from(raw, 'utf-8')) }
+    try {
+      return new Uint8Array(Buffer.from(raw, 'base64'))
+    }
+    catch {
+      return new Uint8Array(Buffer.from(raw, 'utf-8'))
+    }
   }
   return new Uint8Array(0)
 }

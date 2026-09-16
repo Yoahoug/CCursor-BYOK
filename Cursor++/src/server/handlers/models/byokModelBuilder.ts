@@ -8,12 +8,11 @@
  *   - 有 parameters 配置时生成 parameterDefinitions + 笛卡尔积 variants (Edit 面板)
  *   - 无 parameters 时单 variant (向后兼容,无 Edit 按钮)
  */
-import type { ProviderEntry, ProviderModel, ProviderType, ThinkingLevel } from '../../data/defaults'
+import type { ProviderEntry, ProviderModel, ProviderType } from '../../data/defaults'
 import type { RequestedModel_ModelParameterValue } from '../../gen/agent_v1_pb'
 import type {
   AvailableModelsResponse_AvailableModel,
   ModelParameterDefinition,
-  ModelParameterDefinition_ModelParameterType,
 } from '../../gen/aiserver_v1_pb'
 import { create } from '@bufbuild/protobuf'
 import { flattenModels } from '../../config/providersStore'
@@ -259,7 +258,7 @@ function buildVariantSuffix(combo: VariantCombo, providerType: ProviderType, con
   return segments.length > 0 ? segments.join(' ') : null
 }
 
-function isDefaultCombo(combo: VariantCombo, model: ProviderModel, providerType: ProviderType): boolean {
+function isDefaultCombo(combo: VariantCombo, model: ProviderModel, _providerType: ProviderType): boolean {
   for (const [id, val] of combo.params) {
     switch (id) {
       case 'reasoning':

@@ -154,27 +154,25 @@ function getNormalizer(targetProvider: ProviderType): (id: string) => string {
 function stringifyContent(content: LLMMessage['content']): string {
   if (typeof content === 'string')
     return content
-  return content
-    .map((block) => {
-      switch (block.type) {
-        case 'text':
-        case 'thinking':
-          return block.text
-        case 'tool_result':
-          return block.content
-        case 'tool_use':
-          return `[tool call] ${block.name} ${JSON.stringify(block.input)}`
-        case 'image':
-          return `[image:${block.mimeType}]`
-        // 联合类型当前是穷尽的，但返回值来自外部（历史 blob / 各协议编码），
-        // 多一种 block 就会让 map 回调隐式返回 undefined。显式给空串，
-        // 与下游 `.filter(Boolean)` 的既有结果一致。
-        default:
-          return ''
-      }
-    })
-    .filter(Boolean)
-    .join('\n')
+  const parts: string[] = []
+  for (const block of content) {
+    switch (block.type) {
+      case 'text':
+      case 'thinking':
+        parts.push(block.text)
+        break
+      case 'tool_result':
+        parts.push(block.content)
+        break
+      case 'tool_use':
+        parts.push(`[tool call] ${block.name} ${JSON.stringify(block.input)}`)
+        break
+      case 'image':
+        parts.push(`[image:${block.mimeType}]`)
+        break
+    }
+  }
+  return parts.filter(Boolean).join('\n')
 }
 
 function textifyToolMessage(msg: LLMMessage): LLMMessage | null {
