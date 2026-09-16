@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { persistBlob } from '../database/blobs'
 import { persistConversationCheckpoint } from '../database/checkpoints'
-import { resetAgentDatabaseForTests } from '../database/sqlite'
+import { closeAgentDatabase, resetAgentDatabaseForTests } from '../database/sqlite'
 import { encodeBlob } from '../handlers/agent/blob'
 import { resetBlobCacheForTests, warmupBlobsAsync } from '../handlers/agent/blobStore'
 import { rebuildConversationHistory } from '../handlers/agent/historyManager'
@@ -43,7 +43,11 @@ async function withTempAgentDatabase(run: () => Promise<void>): Promise<void> {
   finally {
     capturedParsed = []
     resetBlobCacheForTests()
-    await resetAgentDatabaseForTests()
+    // 用 close 而不是 reset —— reset 是「close + init」，会立刻在同一路径重开一个连接，
+    // 于是下面 rmSync 删临时目录时 sqlite 仍持有那个文件的句柄。
+    // macOS / Linux 允许删除已打开的文件，Windows 不允许，会直接 EPERM。
+    // 这里只需要把句柄放掉；每个用例进入时都会重新 init，无需在此保持数据库可用。
+    await closeAgentDatabase()
     if (prevDbPath === undefined)
       delete process.env.BYOK_AGENT_DB_PATH
     else process.env.BYOK_AGENT_DB_PATH = prevDbPath

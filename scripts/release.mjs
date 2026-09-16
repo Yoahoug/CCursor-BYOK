@@ -46,6 +46,7 @@
  * 装完的东西不对可以直接从那里拷回去。
  */
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
@@ -145,6 +146,7 @@ function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd ?? repoRoot,
     stdio: options.capture ? 'pipe' : 'inherit',
+    env: options.env ?? process.env,
     encoding: 'utf8',
   })
   if (result.error)
@@ -158,21 +160,55 @@ function run(command, args, options = {}) {
 }
 
 /**
- * 定位 node_modules/.bin 下的可执行文件。
+ * 解析 node_modules 里某个 CLI 的 JS 入口，返回可直接交给 node 执行的路径。
  *
- * 不通过 pnpm / npm run 转发：包管理器不一定装在每台机器上（AI 跑的环境
- * 常常只有 node），直接调用 .bin 更稳。Windows 上是 .cmd。
+ * 刻意不走 node_modules/.bin 下的 .cmd / 包装脚本：
+ *   1. Node 出于安全考虑（CVE-2024-27980）**拒绝** spawnSync 直接执行 .cmd / .bat，
+ *      Windows 上会立刻以 EINVAL 失败。而这个脚本最常跑在 Windows（Cursor 所在机器），
+ *      等于整条检查链路在那儿根本走不通。
+ *   2. 换成 shell: true 确实能绕过去，但 Node 会告警 DEP0190：shell 模式下参数是
+ *      **拼接而非转义**的，像 `git commit -m "chore: release v0.0.17"` 这种带空格的
+ *      参数有被拆错的风险 —— 用一个更隐蔽的问题换掉一个显式报错，不划算。
+ * 统一改成 `process.execPath` + 包内 JS 入口后，三个平台走**同一条**代码路径，
+ * 也就不存在"某端行为不一致"的分叉；顺带也不再依赖 pnpm / npm 装在机器上。
+ *
+ * 入口路径读 package.json 的 bin 字段而非写死 `bin/tsc` 这类实现细节 ——
+ * 依赖升版换了目录结构时不会静默失效。
  */
-function localBin(name, baseDir = extensionDir) {
-  const binDir = join(baseDir, 'node_modules', '.bin')
-  const candidates = process.platform === 'win32'
-    ? [join(binDir, `${name}.cmd`), join(binDir, name)]
-    : [join(binDir, name)]
-  for (const candidate of candidates) {
-    if (existsSync(candidate))
-      return candidate
+const TOOL_PACKAGES = {
+  tsc: { packageName: 'typescript', binName: 'tsc' },
+  eslint: { packageName: 'eslint', binName: 'eslint' },
+  vitest: { packageName: 'vitest', binName: 'vitest' },
+  vsce: { packageName: '@vscode/vsce', binName: 'vsce' },
+}
+
+function resolveNodeTool(toolName, baseDir = extensionDir) {
+  const spec = TOOL_PACKAGES[toolName]
+  if (!spec)
+    fail(`未知工具 "${toolName}"，请先在 TOOL_PACKAGES 中登记。`)
+
+  const packageDir = join(baseDir, 'node_modules', ...spec.packageName.split('/'))
+  const manifestPath = join(packageDir, 'package.json')
+  if (!existsSync(manifestPath))
+    return null
+
+  const { bin } = JSON.parse(readFileSync(manifestPath, 'utf8'))
+  const entry = typeof bin === 'string' ? bin : bin?.[spec.binName]
+  if (!entry)
+    return null
+
+  const entryPath = join(packageDir, entry)
+  return existsSync(entryPath) ? entryPath : null
+}
+
+/** 用 node 执行解析出的 CLI 入口 —— 平台无关的调用方式（见 TOOL_PACKAGES 说明） */
+function runTool(toolName, args, options = {}) {
+  const entryPath = resolveNodeTool(toolName)
+  if (!entryPath) {
+    fail(`找不到 ${toolName} —— 请先在 Cursor++/ 下执行 pnpm install。`
+      + `\n  （期望在 node_modules/${TOOL_PACKAGES[toolName].packageName} 下找到 CLI 入口）`)
   }
-  return null
+  return run(process.execPath, [entryPath, ...args], { cwd: extensionDir, ...options })
 }
 
 // ── 版本号处理 ──
@@ -211,6 +247,14 @@ function writePackageVersion(dir, nextVersion) {
 }
 
 // ── 前置检查 ──
+
+/**
+ * 本机 Cursor 的 app 根目录（`.../resources/app`），由 preflight 探测后填入。
+ *
+ * 单测需要它：`@vscode/sqlite3` 只存在于 Cursor 安装目录里，
+ * 而扩展侧的自动探测在下面两种情况下会落空（见 runChecks 的说明）。
+ */
+let cursorAppRoot = null
 
 function preflight() {
   step('前置检查')
@@ -259,19 +303,25 @@ function preflight() {
     fail('Cursor++/node_modules 不存在，请先执行 pnpm install。')
   if (!existsSync(join(extensionDir, 'node_modules', 'esbuild')))
     fail('缺少 esbuild 模块 —— 请先在 Cursor++/ 下执行 pnpm install。')
-  if (!localBin('vsce'))
+  if (!resolveNodeTool('vsce'))
     fail('找不到 vsce —— 请先在 Cursor++/ 下执行 pnpm install。')
+
+  // 定位 Cursor 安装目录。一次探测供两处复用：
+  //   1. 本地安装目标（下面）—— 提前确认，免得构建完才发现装不上；
+  //   2. 单测要用的 CURSOR_APP_ROOT（见 runChecks）。
+  const cursorLocation = findCursorPathsDetailed()
+  cursorAppRoot = cursorLocation.paths?.appRoot ?? null
 
   // 本地安装目标在这里就确认，而不是等构建完再发现找不到 Cursor：
   // 到那时版本号已经改过、包也打好了，白白浪费一轮。
   if (shouldInstallLocal && !dryRun) {
-    const { paths, diagnostic } = findCursorPathsDetailed()
-    if (!paths) {
-      fail(`要更新本地扩展，但找不到 Cursor 安装目录。\n${formatDiagnostic(diagnostic)}`
+    if (!cursorLocation.paths) {
+      fail(`要更新本地扩展，但找不到 Cursor 安装目录（本地扩展可能尚未安装）:\n`
+        + `${formatDiagnostic(cursorLocation.diagnostic)}`
         + '\n  （只想发布、不更新本地的话，加 --no-install）')
     }
-    const installed = existsSync(join(paths.cursor2plusDir, 'package.json'))
-    info(`Cursor ${paths.cursorVersion}：${paths.appRoot}`)
+    const installed = existsSync(join(cursorLocation.paths.cursor2plusDir, 'package.json'))
+    info(`Cursor ${cursorLocation.paths.cursorVersion}：${cursorAppRoot}`)
     info(`本地扩展：${installed ? '已安装，将被覆盖' : '未安装，将新建'}`)
   }
 
@@ -345,23 +395,35 @@ function runChecks() {
 
   step('检查（typecheck + lint + 单测）')
 
-  const tsc = localBin('tsc')
-  const eslint = localBin('eslint')
-  const vitest = localBin('vitest')
-  for (const [name, bin] of [['tsc', tsc], ['eslint', eslint], ['vitest', vitest]]) {
-    if (!bin)
-      fail(`找不到 ${name} —— 请先在 Cursor++/ 下执行 pnpm install。`)
+  for (const toolName of ['tsc', 'eslint', 'vitest']) {
+    if (!resolveNodeTool(toolName))
+      fail(`找不到 ${toolName} —— 请先在 Cursor++/ 下执行 pnpm install。`)
   }
 
   info('typecheck…')
-  run(tsc, ['--noEmit'], { cwd: extensionDir })
+  runTool('tsc', ['--noEmit'])
 
   info('lint…')
-  run(eslint, ['src'], { cwd: extensionDir })
+  runTool('eslint', ['src'])
 
   // 实时网络测试默认跳过：发版不应依赖外网与第三方配额（会因对方限流而假失败）
+  // 单测里的 sqlite 用例要从 **Cursor 安装目录**加载 @vscode/sqlite3
+  // （见 Cursor++/src/server/database/sqlite.ts 的 getCursorAppCandidates）。
+  // 它那边的自动探测在两种常见情况下会落空：
+  //   · Cursor 装在非默认盘符或自定义路径（硬编码候选里没有，例如 D:\…）；
+  //   · vitest 下 __dirname 指向本仓库源码目录，"相对自身往上 3 层"反推出的不是安装目录。
+  // 扩展代码本身就为此提供了 CURSOR_APP_ROOT 覆盖，而"Cursor 装在哪"这件事上面已经探到了，
+  // 这里直接接上 —— 否则测试会栽在一个脚本已经知道答案的问题上。
+  const testEnv = cursorAppRoot
+    ? { ...process.env, CURSOR_APP_ROOT: cursorAppRoot }
+    : process.env
+  if (cursorAppRoot)
+    info(dim(`CURSOR_APP_ROOT=${cursorAppRoot}`))
+  else
+    info(dim('未定位到 Cursor 安装目录，未注入 CURSOR_APP_ROOT（依赖 sqlite3 的用例可能失败）'))
+
   info('unit tests…')
-  run(vitest, ['run'], { cwd: extensionDir })
+  runTool('vitest', ['run'], { env: testEnv })
 
   ok('检查通过')
 }
@@ -391,16 +453,13 @@ function buildAndPackage(version) {
   ok('多端产物完整')
 
   step('打包 VSIX')
-  const vsce = localBin('vsce')
-  if (!vsce)
-    fail('找不到 vsce —— 请先在 Cursor++/ 下执行 pnpm install。')
-  run(vsce, [
+  runTool('vsce', [
     'package',
     '--no-dependencies',
     '--allow-missing-repository',
     '--skip-license',
     '--allow-star-activation',
-  ], { cwd: extensionDir })
+  ])
 
   const vsixPath = join(extensionDir, `cursor2plus-${version}.vsix`)
   if (!existsSync(vsixPath))
@@ -456,6 +515,41 @@ function extractVsix(vsixPath, extractDir) {
     : '解压 VSIX 失败 —— 需要系统 unzip 命令。')
 }
 
+/** 文件内容的 sha256 —— 用来判断某个文件是否真的需要重写 */
+function hashFile(path) {
+  return createHash('sha256').update(readFileSync(path)).digest('hex')
+}
+
+/**
+ * 递归列出目录下所有文件的相对路径，统一用 `/` 分隔。
+ *
+ * 归一化分隔符是必需的：Windows 上 readdir 给出的是 `dist\extension.js`，
+ * 而 VSIX 里是 `dist/extension.js`，直接比较会把同一个文件当成两个。
+ * 取出来统一成 `/`，回写时再用 resolveRelative 转回本机形式。
+ */
+function listRelativeFiles(root) {
+  if (!existsSync(root))
+    return []
+
+  const collected = []
+  const walk = (dir, prefix) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name
+      if (entry.isDirectory())
+        walk(join(dir, entry.name), relativePath)
+      else
+        collected.push(relativePath)
+    }
+  }
+  walk(root, '')
+  return collected
+}
+
+/** 把 `/` 分隔的相对路径转回本机路径 */
+function resolveRelative(root, relativePath) {
+  return join(root, ...relativePath.split('/'))
+}
+
 /**
  * 把刚打好的 VSIX 装到本机 Cursor。
  *
@@ -478,15 +572,10 @@ function installLocal(vsixPath, version) {
   const targetDir = paths.cursor2plusDir
   info(`目标：${targetDir}`)
 
-  // 文件覆盖在扩展重启前不会生效（JS 已 require 进内存），所以只提示不阻断。
-  // Windows 上另有麻烦：正在被占用的 .node 会写入失败，那里需要先关掉 Cursor。
-  if (isCursorRunning(paths.appRoot)) {
-    if (process.platform === 'win32') {
-      fail('Cursor 正在运行，Windows 下扩展目录里的原生模块可能被占用而写入失败。'
-        + '\n  请完全退出 Cursor 后重试。')
-    }
-    info('Cursor 正在运行 —— 文件可以覆盖，但需重启 Cursor 才会加载新代码。')
-  }
+  // 覆盖的文件在扩展重启前不会生效（JS 已 require 进内存），所以只提示不阻断。
+  // 个别被占用的文件会在替换步骤里单独跳过，并在结尾汇总报错 —— 见那里的说明。
+  if (isCursorRunning(paths.appRoot))
+    info('Cursor 正在运行 —— 需重启 Cursor 才会加载新代码（被占用的文件会单独跳过并提示）。')
 
   const workDir = join(homedir(), '.ccursor', '.release-tmp')
   const extractDir = join(workDir, 'extracted')
@@ -511,14 +600,67 @@ function installLocal(vsixPath, version) {
       info(`已备份旧版本 v${previous} → ${basename(backupPath)}`)
     }
 
-    // 2) 替换扩展本体。
-    //    dist/ 先删后拷：旧版本可能留下已被移除的文件（例如换 provider 后残留的模块），
-    //    整体覆盖会把这些僵尸文件留下来。
+    // 2) 替换扩展本体 —— 只写**内容有差异**的文件。
+    //
+    //    为什么不整体 rm + cp：目录里体积最大的是一整套 supermarkdown 原生模块
+    //    （8 个 .node，约 27MB），而它们几乎从不变化。原先无条件重写全部文件时，
+    //    只要有一个 .node 正被运行中的 Cursor 占用，整个安装就当场失败 —— 哪怕这次
+    //    根本没改动任何原生模块。改成按内容跳过之后，"在 Cursor 里跑发布"这个最常见
+    //    的情况也能顺利完成，不必先关掉它；顺带也快得多。
+    //
+    //    僵尸文件仍然要清：旧版本可能留下已被移除的模块（比如换掉 provider 后的残留）。
+    //    cursor2plus/ 完全由 VSIX 拥有（installer 的 extension-embed.js 就是整目录删掉
+    //    重装），所以这里做全树镜像，多出来的文件一律删除。
     mkdirSync(targetDir, { recursive: true })
-    rmSync(join(targetDir, 'dist'), { recursive: true, force: true })
-    cpSync(payloadDir, targetDir, { recursive: true })
 
-    // 3) 校验：确认落盘的产物与 VSIX 内容一致
+    const payloadFiles = listRelativeFiles(payloadDir)
+    const writtenFiles = []
+    const unchangedFiles = []
+    const removedFiles = []
+    const blockedFiles = []
+
+    for (const relativePath of payloadFiles) {
+      const sourcePath = resolveRelative(payloadDir, relativePath)
+      const targetPath = resolveRelative(targetDir, relativePath)
+
+      if (existsSync(targetPath) && hashFile(sourcePath) === hashFile(targetPath)) {
+        unchangedFiles.push(relativePath)
+        continue
+      }
+
+      try {
+        mkdirSync(dirname(targetPath), { recursive: true })
+        cpSync(sourcePath, targetPath)
+        writtenFiles.push(relativePath)
+      }
+      catch (error) {
+        blockedFiles.push({ relativePath, reason: error.code ?? error.message })
+      }
+    }
+
+    const payloadFileSet = new Set(payloadFiles)
+    for (const relativePath of listRelativeFiles(targetDir)) {
+      if (payloadFileSet.has(relativePath))
+        continue
+      try {
+        rmSync(resolveRelative(targetDir, relativePath))
+        removedFiles.push(relativePath)
+      }
+      catch (error) {
+        blockedFiles.push({ relativePath, reason: error.code ?? error.message })
+      }
+    }
+
+    // 3) 被占用的文件必须显式报出来，不能默默算成功 ——
+    //    否则会变成"脚本说装好了、实际一部分还是旧代码"这种最难排查的状态。
+    if (blockedFiles.length > 0) {
+      fail(`${blockedFiles.length} 个文件被占用，未能写入：\n    `
+        + blockedFiles.map(item => `${item.relativePath}（${item.reason}）`).join('\n    ')
+        + '\n  这些通常是运行中的 Cursor 已加载的原生模块。'
+        + '\n  请完全退出 Cursor 后重跑本命令 —— 已写入的文件内容一致，会被自动跳过，不会重复覆盖。')
+    }
+
+    // 4) 校验：确认落盘的产物与 VSIX 内容一致
     const mismatch = REQUIRED_ARTIFACTS
       .filter(name => existsSync(join(payloadDir, 'dist', name)))
       .filter(name => !existsSync(join(targetDir, 'dist', name)))
@@ -529,7 +671,10 @@ function installLocal(vsixPath, version) {
     if (installedVersion !== version)
       fail(`版本不符：期望 ${version}，实际写入 ${installedVersion}`)
 
-    ok(`本地扩展已更新到 v${installedVersion}（${REQUIRED_ARTIFACTS.length} 个文件校验通过）`)
+    ok(`本地扩展已更新到 v${installedVersion}`
+      + `（写入 ${writtenFiles.length} 个，内容一致跳过 ${unchangedFiles.length} 个`
+      + (removedFiles.length > 0 ? `，清理旧文件 ${removedFiles.length} 个` : '')
+      + '）')
   }
   finally {
     rmSync(workDir, { recursive: true, force: true })
