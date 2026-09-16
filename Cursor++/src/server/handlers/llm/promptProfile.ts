@@ -1,9 +1,9 @@
-import type { Provider } from '../../runtime-config';
+import type { ProviderType } from '../../data/defaults';
 import { resolveModel } from '../models/mapper';
 import { getProviderToolCatalog, type ProviderToolCatalog } from './toolCatalog';
 
 export interface ProviderPromptProfile {
-    readonly provider: Provider;
+    readonly provider: ProviderType;
     readonly variant: 'main' | 'fallback';
     readonly systemPromptStyle: 'anthropic-main' | 'openai-main' | 'gemini-main' | 'composer-fallback';
     readonly observedSystemPromptHashes: string[];
@@ -24,7 +24,7 @@ export function resolvePromptProfile(modelId: string): ProviderPromptProfile {
     // 不对应任何具体 provider 模型,也不要求登记到 providers.json。
     // 这里单独走 fallback 路径, 避免 resolveModel() 对未登记 modelId 抛 ModelNotFoundError。
     if (modelId.startsWith('composer-')) {
-        const provider: Provider = 'anthropic';
+        const provider: ProviderType = 'anthropic';
         const toolCatalog = getProviderToolCatalog(provider, 'fallback');
         return {
             provider,

@@ -2,21 +2,21 @@ import { CustomSelect } from './custom-select'
 import { Modal } from './modal'
 
 const SEARCH_PROVIDERS = [
-  { type: 'tavily', name: 'Tavily', needsKey: true, supportsBaseUrl: true, hint: 'LLM-optimized — 1,000 free/month, supports a custom Base URL' },
-  { type: 'duckduckgo', name: 'DuckDuckGo', needsKey: false, supportsBaseUrl: false, hint: 'Free fallback — often blocked by anti-bot (202)' },
+  { type: 'tavily', name: 'Tavily', needsKey: true, supportsBaseUrl: true, hint: 'Search results tuned for LLMs — 1,000 free calls per month, supports a custom Base URL' },
+  { type: 'duckduckgo', name: 'DuckDuckGo', needsKey: false, supportsBaseUrl: false, hint: 'Free fallback — often blocked by anti-bot (returns 202)' },
 ] as const
 
 const FETCH_PROVIDERS = [
   {
     type: 'tavily',
     name: 'Tavily Extract',
-    hint: 'Server-side extraction — bypasses Cloudflare challenges that block the built-in fetcher. Reuses the API key / Base URL from the Search tab.',
+    hint: 'Server-side fetch — gets past the Cloudflare challenge pages the built-in fetcher cannot. Reuses the key and Base URL from the Search tab.',
     reusesSearchConfig: true,
   },
   {
     type: 'builtin',
     name: 'Built-in (supermarkdown)',
-    hint: 'Local HTML→Markdown, zero config. Cannot fetch sites behind Cloudflare (e.g. linux.do returns 403).',
+    hint: 'Local HTML → Markdown, zero config. Cannot fetch sites behind Cloudflare (linux.do returns 403, for example).',
     reusesSearchConfig: false,
   },
 ] as const
@@ -26,7 +26,7 @@ export function WebToolsButton() {
     <button
       class="search-btn"
       x-on:click="$store.app.webToolsOpen = true"
-      title="Configure search and fetch providers"
+      title="Configure search and web fetch providers"
     >
       Web Tools
     </button>
@@ -53,7 +53,7 @@ export function WebToolsDialog() {
         </button>
       </div>
 
-      {/* ── Search Tab ── */}
+      {/* ── 搜索 ── */}
       <div x-show="$store.app.webToolsTab === 'search'">
         <div class="search-providers">
           {SEARCH_PROVIDERS.map(sp => (
@@ -115,16 +115,16 @@ export function WebToolsDialog() {
             </div>
           ))}
           <div class="search-options">
-            <label class="check" title="Search all enabled providers in parallel and merge results">
+            <label class="check" title="Query all enabled providers in parallel and merge the results">
               <input
                 type="checkbox"
                 x-bind:checked="$store.app.webTools?.search?.parallel === true"
                 x-on:change="$store.app.setSearchOption('parallel', $event.target.checked)"
               />
-              {' Parallel Search'}
+              {' Parallel search'}
             </label>
             <div class="search-max-results">
-              <label>Max Results</label>
+              <label>Max results</label>
               <CustomSelect
                 valueExpr="String($store.app.webTools?.search?.maxResults || 5)"
                 changeExpr="$store.app.setSearchOption('maxResults', Number($value))"
@@ -141,20 +141,20 @@ export function WebToolsDialog() {
           <div class="search-options" style="border-top:none;padding-top:0;margin-top:8px">
             <label
               class="check"
-              title="When the configured provider fails, fall back to scraping DuckDuckGo. DDG frequently serves an anti-bot page (HTTP 202), which this build detects and reports as an error instead of returning junk links."
+              title="When every configured provider fails, fall back to scraping DuckDuckGo. DDG frequently returns an anti-bot page (HTTP 202); this implementation detects that and reports an error instead of treating junk links as results."
             >
               <input
                 type="checkbox"
                 x-bind:checked="$store.app.webTools?.search?.fallbackToDuckDuckGo !== false"
                 x-on:change="$store.app.setSearchOption('fallbackToDuckDuckGo', $event.target.checked)"
               />
-              {' Fallback to DuckDuckGo'}
+              {' Fall back to DuckDuckGo'}
             </label>
           </div>
         </div>
       </div>
 
-      {/* ── Fetch Tab ── */}
+      {/* ── 抓取 ── */}
       <div x-show="$store.app.webToolsTab === 'fetch'">
         <div class="fetch-providers">
           {FETCH_PROVIDERS.map(fp => (
@@ -186,7 +186,7 @@ export function WebToolsDialog() {
                     class="fetch-provider-goto-search"
                     x-on:click="$store.app.webToolsTab = 'search'"
                   >
-                    Edit in Search tab
+                    Change it on the "Search" tab
                   </button>
                   <div class="search-provider-actions">
                     <button

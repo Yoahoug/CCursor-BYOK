@@ -2,8 +2,8 @@
   "publisher": "cometix-space",
   "name": "cursor2plus",
   "displayName": "Cursor++",
-  "version": "0.0.17",
-  "description": "Cursor++ BYOK Extension — Bring Your Own Key for Cursor IDE",
+  "version": "0.0.20",
+  "description": "Cursor++ BYOK extension — bring your own key (BYOK) for the Cursor IDE",
   "icon": "resources/icon.png",
   "main": "./dist/extension.js",
   "extensionKind": [
@@ -20,19 +20,19 @@
     "commands": [
       {
         "command": "cursor2plus.toggleByok",
-        "title": "Cursor++: Toggle BYOK Mode (on/off)"
+        "title": "Cursor++: Toggle BYOK Mode"
       },
       {
         "command": "cursor2plus.serverToggle",
-        "title": "Cursor++: Toggle BYOK Server"
+        "title": "Cursor++: Start/Stop BYOK Server"
       },
       {
         "command": "cursor2plus.editRoutes",
-        "title": "Cursor++: Edit Routes Config"
+        "title": "Cursor++: Edit Routes"
       },
       {
         "command": "cursor2plus.editProviders",
-        "title": "Cursor++: Edit Providers Config"
+        "title": "Cursor++: Edit Providers"
       },
       {
         "command": "cursor2plus.openSettings",
@@ -40,7 +40,7 @@
       },
       {
         "command": "cursor2plus.toggleFileLog",
-        "title": "Cursor++: Toggle File Logging (debug)"
+        "title": "Cursor++: Toggle File Logging (Debug)"
       },
       {
         "command": "cursor2plus.openLogFile",
@@ -53,22 +53,22 @@
         "cursor2plus.server.host": {
           "type": "string",
           "default": "127.0.0.1",
-          "description": "BYOK server listen host"
+          "description": "BYOK server bind address"
         },
         "cursor2plus.server.port": {
           "type": "number",
           "default": 39831,
-          "description": "BYOK server listen port"
+          "description": "BYOK server port"
         },
         "cursor2plus.server.autoStart": {
           "type": "boolean",
           "default": true,
-          "description": "Auto-start BYOK server on activation"
+          "description": "Start the BYOK server automatically when Cursor launches"
         },
         "cursor2plus.collector.port": {
           "type": "number",
           "default": 14800,
-          "description": "Hook collector port (merged into BYOK server when 0)"
+          "description": "Hook capture port (set to 0 to share the BYOK server)"
         }
       }
     },

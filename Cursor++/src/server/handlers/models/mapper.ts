@@ -13,13 +13,14 @@
  */
 import type { ProviderEntry, ProviderModel, ProviderType, ThinkingLevel } from '../../data/defaults'
 import { lookupModel } from '../../config/providersStore'
+import { effectiveProviderType } from '../../data/defaults'
 import { logger } from '../../logger'
 
 export class ModelNotFoundError extends Error {
   readonly code = 'MODEL_NOT_FOUND'
   readonly modelId: string
   constructor(modelId: string) {
-    super(`Model "${modelId}" not found in ~/.ccursor/providers.json — please add it first.`)
+    super(`Model "${modelId}" is not registered in ~/.ccursor/providers.json — add it first.`)
     this.name = 'ModelNotFoundError'
     this.modelId = modelId
   }
@@ -30,6 +31,10 @@ export interface ModelContextMetadata {
 }
 
 export interface ResolvedModel extends ModelContextMetadata {
+  /**
+   * 本次请求实际使用的协议 —— **模型级生效值**，不是 provider.type。
+   * 由 effectiveProviderType(provider, model) 求得，是下游唯一的协议真相来源。
+   */
   provider: ProviderType
   providerEntry: ProviderEntry | null
   apiModel: string
@@ -59,8 +64,9 @@ export function resolveModel(modelId: string): ResolvedModel {
     logger.warn({ modelId }, '[MODEL] not found in providers.json — rejecting request')
     throw new ModelNotFoundError(modelId)
   }
+  const effectiveType = effectiveProviderType(hit.provider, hit.model)
   return {
-    provider: hit.provider.type,
+    provider: effectiveType,
     providerEntry: hit.provider,
     apiModel: hit.model.apiModel,
     thinking: hit.model.thinking,
@@ -68,14 +74,14 @@ export function resolveModel(modelId: string): ResolvedModel {
     thinkingBudgetTokens: hit.model.thinkingBudgetTokens,
     maxOutputTokens: hit.model.maxOutputTokens ?? 8192,
     ...(hit.model.noMaxTokens ? { noMaxTokens: true } : {}),
-    ...(hit.model.fastMode && hit.provider.type !== 'anthropic' ? { serviceTier: 'priority' as const } : {}),
-    ...(hit.provider.type === 'anthropic' ? (() => {
+    ...(hit.model.fastMode && effectiveType !== 'anthropic' ? { serviceTier: 'priority' as const } : {}),
+    ...(effectiveType === 'anthropic' ? (() => {
       const betas: string[] = []
       if ((hit.model.contextTokenLimit ?? 0) >= 1_000_000) betas.push('context-1m-2025-08-07')
       if (hit.model.fastMode) betas.push('fast-mode-2026-02-01')
       return betas.length > 0 ? { anthropicBetas: betas } : {}
     })() : {}),
-    ...inferModelContextMetadata(modelId, hit.provider.type, hit.model),
+    ...inferModelContextMetadata(modelId, effectiveType, hit.model),
   }
 }
 

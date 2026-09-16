@@ -7,14 +7,14 @@ import type {
   ChatCompletionMessageToolCall,
   ChatCompletionToolMessageParam,
 } from 'openai/resources/chat/completions'
-import type { Provider } from '../../runtime-config'
+import type { ProviderType } from '../../data/defaults'
 import type { SemanticTurn } from './semanticConversation'
 import type { StoredMessage } from './storedTranscript'
 import type { LLMContentBlock, LLMMessage, LLMTool } from './types'
 import { normalizeStoredTranscript as normalizeSemanticTranscript } from './semanticConversation'
 
 export interface ProviderConversationCodec {
-  readonly provider: Provider
+  readonly provider: ProviderType
   readonly name: string
   normalizeMessages: (messages: LLMMessage[]) => LLMMessage[]
   normalizeStoredTranscript: (messages: StoredMessage[]) => SemanticTurn[]
@@ -23,7 +23,7 @@ export interface ProviderConversationCodec {
 
 abstract class BaseConversationCodec implements ProviderConversationCodec {
   constructor(
-    readonly provider: Provider,
+    readonly provider: ProviderType,
     readonly name: string,
   ) {}
 

@@ -17,6 +17,7 @@ import type {
 } from '../../gen/aiserver_v1_pb'
 import { create } from '@bufbuild/protobuf'
 import { flattenModels } from '../../config/providersStore'
+import { effectiveProviderType } from '../../data/defaults'
 import { RequestedModel_ModelParameterValueSchema } from '../../gen/agent_v1_pb'
 import {
   AvailableModelsResponse_AvailableModelSchema,
@@ -119,7 +120,9 @@ function buildParameterDefinitions(
 
   const defs: ModelParameterDefinition[] = []
   const axes: ParamAxis[] = []
-  const isOpenAI = provider.type === 'openai-chat' || provider.type === 'openai-responses'
+  // 参数轴按**模型生效协议**生成，不是 provider.type —— 见 effectiveProviderType。
+  const modelType = effectiveProviderType(provider, model)
+  const isOpenAI = modelType === 'openai-chat' || modelType === 'openai-responses'
 
   // ── Reasoning / Thinking+Effort / Budget ──
   if (params.reasoning && isOpenAI) {
@@ -387,14 +390,15 @@ function buildAvailableModelFromByok(
 
   // ── parameterDefinitions + variants ──
   const { defs, axes } = buildParameterDefinitions(provider, model)
+  const variantModelType = effectiveProviderType(provider, model)
   let variants
 
   if (defs.length > 0 && axes.length > 0) {
     const combos = cartesianProduct(axes)
     variants = combos.map((combo) => {
-      const suffix = buildVariantSuffix(combo, provider.type, model.contextTokenLimit)
+      const suffix = buildVariantSuffix(combo, variantModelType, model.contextTokenLimit)
       const displayName = wrapDisplayName(model.displayName, suffix)
-      const isDefault = isDefaultCombo(combo, model, provider.type)
+      const isDefault = isDefaultCombo(combo, model, variantModelType)
       return create(AvailableModelsResponse_ModelVariantConfigSchema, {
         displayName,
         displayNameOutsidePicker: displayName,

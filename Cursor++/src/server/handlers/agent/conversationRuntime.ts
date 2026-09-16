@@ -23,6 +23,8 @@ import { ActiveTurnTracker, createCurrentTurnUserMessageBlob, readTurnBaseline }
 import { contextualizeDynamicMetaTools, partitionCursorBuiltinTools, shouldEnableBuiltinDynamicProfile } from './dynamicTools'
 import { contextualizeSubagentTools } from './subagentCatalog'
 import { addUsage, clampTokenDetails, emptyUsageTotals, estimateContextTokens, getAutoCompactThreshold, shouldTriggerCompaction } from './usage'
+import { recordUsage } from '../../stats/usageStore'
+import { normalizeUsage } from '../../../shared/usageTypes'
 import { isAgentRunAbortedError, throwIfSessionCancelled } from './wait'
 import { isSessionCancelled } from './session'
 import { makeProviderError, makeToolError } from '../errors'
@@ -1153,6 +1155,18 @@ export async function* handleConversationRun(
             }))
             Object.assign(usageTotals, addUsage(usageTotals, event.usage))
             usedTokensEstimate = Math.max(usedTokensEstimate, estimateContextTokens(event.usage))
+            // 用量统计落盘。逐协议归一化后再写 —— 四种协议的 inputTokens 口径不同，
+            // 原样记录会让缓存命中率跨协议不可比（见 shared/usageTypes.ts）。
+            // route.model 是 apiModel（发给端点的真实模型名），不是 UI 上的显示名，
+            // 这样统计行能和端点日志对上。
+            recordUsage({
+              ts: Date.now(),
+              provider: route.providerName,
+              providerId: route.providerId,
+              model: route.model,
+              providerType: route.providerType,
+              ...normalizeUsage(route.providerType, event.usage),
+            })
             break
         }
       }, undefined, (event) => {

@@ -5,6 +5,22 @@
  * Alpine 响应式代理自动追踪 mutation → DOM 更新, 无需手动 render() / rebind。
  */
 import type { Alpine as AlpineType } from 'alpinejs'
+import type { ProviderType } from '../../server/data/defaults'
+import type { ModelTestErrorKind, ModelTestResult, ProtocolAttempt, ProtocolDetection } from '../../shared/modelTestTypes'
+import type { ProtocolFamily, ProtocolFamilyOption } from '../../shared/providerProtocol'
+import type { UsageSummary } from '../../shared/usageTypes'
+import { isProviderType } from '../../server/data/defaults'
+import { MODEL_TEST_ERROR_HINT, MODEL_TEST_ERROR_LABEL } from '../../shared/modelTestTypes'
+import {
+  buildRequestUrlPreview,
+  checkBaseUrlShape,
+  defaultProtocolForModel,
+  describeProviderType,
+  familyOf,
+  materializeModelProtocols,
+  PROTOCOL_FAMILY_OPTIONS,
+  providerTypeOf,
+} from '../../shared/providerProtocol'
 
 declare function acquireVsCodeApi(): { postMessage: (msg: any) => void, getState: () => any, setState: (s: any) => void }
 
@@ -66,6 +82,28 @@ function providersEqual(a: any, b: any): boolean {
   return stableStringify(canonicalProvider(a)) === stableStringify(canonicalProvider(b))
 }
 
+/**
+ * store 上的字段是 any（Alpine proxy 无法静态推断），直接把 any 当索引去查
+ * Record<ModelTestErrorKind, string> 会报隐式 any。这里集中做一次收窄与兜底，
+ * 也顺便保证后端将来新增错误分类时 UI 不会显示 undefined。
+ */
+function errorLabelFor(kind: unknown): string {
+  return MODEL_TEST_ERROR_LABEL[kind as ModelTestErrorKind] ?? MODEL_TEST_ERROR_LABEL.unknown
+}
+
+function errorHintFor(kind: unknown): string {
+  return MODEL_TEST_ERROR_HINT[kind as ModelTestErrorKind] ?? MODEL_TEST_ERROR_HINT.unknown
+}
+
+/** 探测时每种协议失败原因的简短描述 —— 全部打不通时拼给用户看 */
+function describeAttempt(result: ModelTestResult): string {
+  if (result.status === 'success')
+    return 'OK'
+  if (result.status === 'cancelled')
+    return 'Cancelled'
+  return errorLabelFor(result.errorKind)
+}
+
 export function initApp(Alpine: AlpineType) {
   // Alpine store 内 this 指向 proxy 对象, TS 无法推断 — 用 any 绕过
   const store: any = {
@@ -80,6 +118,52 @@ export function initApp(Alpine: AlpineType) {
     remoteModels: {} as Record<string, { loading: boolean, models?: any[], error?: string }>,
     saveSnapshots: {} as Record<string, { targetIds: string[], snapshots: Record<string, any> }>,
     savingProviders: {} as Record<string, boolean>,
+
+    // ── 模型连通性测试 ──
+    // key 是 model id（全局唯一），这样切换 provider 折叠状态不会丢结果
+    // overrideType 记录这次结果是"用哪种协议测出来的" —— 协议探测成功后就靠它回填
+    modelTests: {} as Record<string, { running: boolean, testId?: string, overrideType?: ProviderType, result?: ModelTestResult }>,
+    batchTesting: {} as Record<string, boolean>,
+
+    /**
+     * 协议自动探测 —— 进行中标记 + 上次结果。
+     * 结果留着是为了在全部协议都打不通时，能把"每种协议各自报了什么错"列出来。
+     */
+    protocolDetecting: {} as Record<string, boolean>,
+    protocolDetections: {} as Record<string, ProtocolDetection | null>,
+
+    // ── 用量统计（缓存仪表盘） ──
+    usageOpen: false,
+    usageLoading: false,
+    usageStats: null as UsageSummary | null,
+    usageError: '',
+
+    // ── 二次确认弹窗 ──
+    //
+    // 存描述符而不是闭包：Alpine 会把 state 包成 reactive proxy，
+    // 把函数放进去既没必要也让序列化/调试变复杂。动作由 kind 分支还原。
+    confirmDialog: null as null | {
+      kind: 'deleteProvider' | 'removeModel'
+      title: string
+      message: string
+      warning?: string
+      confirmLabel: string
+      pid: string
+      mid?: string
+    },
+
+    // ── 子页签 ──
+    //
+    // 主界面是仪表盘（默认）：打开面板多半是想确认"通不通、省了多少"，
+    // 而不是改配置。配置挪到第二个页签，改完切回来就能看到效果。
+    activeTab: 'dashboard' as 'dashboard' | 'config',
+
+    setTab(tab: 'dashboard' | 'config') {
+      this.activeTab = tab
+      // 切回仪表盘顺手刷新：用户很可能刚发过请求，想看新的命中率
+      if (tab === 'dashboard')
+        this.loadUsageStats()
+    },
 
     // ── Web Tools Config ──
     webToolsOpen: false,
@@ -150,15 +234,15 @@ export function initApp(Alpine: AlpineType) {
       if (!hasKey) {
         return {
           level: 'warn',
-          text: 'No Tavily API key found — configure it in the Search tab. Until then, fetch falls back to the built-in converter (which cannot reach Cloudflare-protected sites).',
+          text: 'No Tavily API key found — add one on the "Search" tab. Until then, fetch falls back to the built-in converter (which cannot reach sites behind Cloudflare).',
         }
       }
       const baseUrl = entry?.baseUrl?.trim()
       return {
         level: 'ok',
         text: baseUrl
-          ? `Using the API key from the Search tab, all fetch requests are sent to ${baseUrl}.`
-          : 'Using the API key from the Search tab with the official api.tavily.com endpoint.',
+          ? `Reusing the key from the "Search" tab; all fetches go to ${baseUrl}.`
+          : 'Reusing the key from the "Search" tab via the official api.tavily.com endpoint.',
       }
     },
     testFetchProvider() {
@@ -223,12 +307,12 @@ export function initApp(Alpine: AlpineType) {
       if (!s)
         return ''
       if (s.server === 'local')
-        return `Running on :${s.port} (this instance)`
+        return `Running on :${s.port} (this window)`
       if (s.server === 'remote')
-        return `Running on :${s.port} (another instance)`
+        return `Running on :${s.port} (another window)`
       if (s.serverIssue === 'port_occupied')
-        return `Port :${s.port} occupied by another process`
-      return 'Offline'
+        return `Port :${s.port} is occupied by another process`
+      return 'Not running'
     },
 
     // ── Draft 管理 ──
@@ -275,6 +359,583 @@ export function initApp(Alpine: AlpineType) {
       return !providersEqual(base, draft)
     },
 
+    // ── 协议 ──
+    //
+    // 协议**只挂在模型上**。一个中转站（一个地址、一个 Key）通常同时挂着
+    // gpt / gemini / grok / glm / deepseek，各家走各的接口形态 —— 中转站自己
+    // 内部就分流了，用户不需要、也无从判断"这个中转站属于哪一类协议"。
+    // 所以中转站那层不再有协议设置，模型那层也不再需要"继承"这回事。
+    //
+    // 存储层仍是 4 个平铺的 ProviderType（见 src/shared/providerProtocol.ts），
+    // 只是选择权从 provider 挪到了 model。
+
+    /**
+     * 折叠头部的一行摘要 —— 中转站下各模型分别用哪套协议。
+     *
+     * 一个中转站下混挂多家模型是常态，只显示一个协议名会误导，所以列出
+     * 去重后的协议名；还没有填 API Model 的模型不参与统计。
+     */
+    typeLabel(pid: string): string {
+      const models = this.getDraft(pid).models || []
+      const labels: string[] = []
+      for (const m of models) {
+        if (!m?.apiModel?.trim())
+          continue
+        const label = describeProviderType(this.modelProtocolType(pid, m.id))
+        if (!labels.includes(label))
+          labels.push(label)
+      }
+      return labels.join(' · ')
+    },
+
+    /** baseURL 形状检查 —— 只关心会静默失败的那几个坑。按模型算，因为路径由协议决定 */
+    baseUrlShape(pid: string, mid: string): { level: 'warn' | 'info', message: string } | null {
+      const p = this.getDraft(pid)
+      return checkBaseUrlShape(this.modelProtocolType(pid, mid), p.baseUrl ?? '')
+    },
+
+    // ── 模型连通性测试 ──
+
+    modelTest(mid: string): { running: boolean, testId?: string, result?: ModelTestResult } | null {
+      return this.modelTests[mid] ?? null
+    },
+
+    /** 结果徽标用的紧凑文案；未测试时返回空串，让列表保持干净 */
+    modelTestSummary(mid: string): string {
+      const state = this.modelTests[mid]
+      if (!state)
+        return ''
+      if (state.running)
+        return 'Testing…'
+      const result = state.result
+      if (!result)
+        return ''
+      if (result.status === 'cancelled')
+        return 'Cancelled'
+      if (result.status === 'error')
+        return 'Failed'
+      return `${result.tokensPerSecond.toFixed(1)} tok/s`
+    },
+
+    modelTestTone(mid: string): string {
+      const state = this.modelTests[mid]
+      if (!state?.result || state.running)
+        return 'idle'
+      if (state.result.status === 'success')
+        return 'ok'
+      if (state.result.status === 'cancelled')
+        return 'idle'
+      return 'bad'
+    },
+
+    clearModelTest(mid: string) {
+      const { [mid]: _removed, ...rest } = this.modelTests
+      this.modelTests = rest
+    },
+
+    /** 成功时的指标明细。标注估算来源, 不把估算值冒充真实用量。 */
+    modelTestMetrics(mid: string): string {
+      const result = this.modelTests[mid]?.result
+      if (!result || result.status !== 'success')
+        return ''
+      const parts = [
+        `${result.tokensPerSecond.toFixed(1)} tok/s`,
+        `first token ${result.firstTextMs ?? '—'} ms`,
+        `total ${result.durationMs} ms`,
+        `${result.outputTokens} tokens${result.tokensEstimated ? ' (estimated)' : ''}`,
+      ]
+      // thinking 模型的首个事件是思考 token 而非正文, 两者不同时值得单列
+      if (result.firstValidResponseMs !== null && result.firstValidResponseMs !== result.firstTextMs)
+        parts.splice(2, 0, `first event ${result.firstValidResponseMs} ms`)
+      if (result.usage)
+        parts.push(`in ${result.usage.inputTokens} / out ${result.usage.outputTokens}`)
+      return parts.join(' · ')
+    },
+
+    /** 徽标悬浮提示 —— 列表里只放徽标, 细节进 tooltip */
+    modelTestDetail(mid: string): string {
+      const state = this.modelTests[mid]
+      if (!state)
+        return 'Click to run a connectivity test'
+      if (state.running)
+        return 'Testing… click to cancel'
+      const result = state.result
+      if (!result)
+        return 'Click to run a connectivity test'
+      if (result.status === 'cancelled')
+        return `Cancelled (${result.durationMs} ms)`
+      if (result.status === 'error')
+        return `${errorLabelFor(result.errorKind)} —— ${errorHintFor(result.errorKind)}\n${result.message}`
+      return `${this.modelTestMetrics(mid)}\n\n${result.output.slice(0, 400)}`
+    },
+
+    modelTestErrorLabel(mid: string): string {
+      const result = this.modelTests[mid]?.result
+      return result?.status === 'error' ? errorLabelFor(result.errorKind) : ''
+    },
+
+    modelTestErrorHint(mid: string): string {
+      const result = this.modelTests[mid]?.result
+      return result?.status === 'error' ? errorHintFor(result.errorKind) : ''
+    },
+
+    modelTestOutput(mid: string): string {
+      const result = this.modelTests[mid]?.result
+      return result?.status === 'success' ? result.output : ''
+    },
+
+    testModel(pid: string, mid: string) {
+      if (this.modelTests[mid]?.running)
+        return
+      void this._runTestAndWait(pid, mid)
+    },
+    cancelModelTest(mid: string) {
+      const state = this.modelTests[mid]
+      if (state?.testId)
+        this.post('cancelModelTest', { testId: state.testId })
+    },
+
+    /**
+     * 依次测试该 provider 下所有填了 API Model 的模型。
+     *
+     * 刻意串行：并发打同一个端点容易被限流，而且并发请求会互相抢带宽，
+     * 让 tokens/s 这个指标失去可比性 —— 批量测试的价值恰恰在于横向比较。
+     */
+    async testAllModels(pid: string) {
+      if (this.batchTesting[pid])
+        return
+      const models = (this.getDraft(pid).models || []).filter((m: any) => m?.apiModel?.trim())
+      if (models.length === 0) {
+        this.toast('Nothing to test: fill in API Model for the model first', 'warn')
+        return
+      }
+      this.batchTesting = { ...this.batchTesting, [pid]: true }
+      try {
+        for (const model of models)
+          await this._runTestAndWait(pid, model.id)
+      }
+      finally {
+        const { [pid]: _removed, ...rest } = this.batchTesting
+        this.batchTesting = rest
+      }
+    },
+
+    _testResolvers: {} as Record<string, () => void>,
+
+    _runTestAndWait(pid: string, mid: string, overrideType?: ProviderType): Promise<void> {
+      return new Promise((resolve) => {
+        const testId = uid('test')
+        this._testResolvers[testId] = resolve
+        this.modelTests = { ...this.modelTests, [mid]: { running: true, testId, overrideType } }
+        this.post('testModel', {
+          testId,
+          pid,
+          mid,
+          overrideType,
+          // 带上 draft：用户常是「改完地址立刻想测」，此时还没保存
+          draft: JSON.parse(JSON.stringify(this.getDraft(pid))),
+        })
+      })
+    },
+
+    // ── 模型级协议 ──
+    //
+    // 协议挂在模型上而不是中转站上：一个中转站（一个地址、一个 Key）通常同时
+    // 挂着 gemini / gpt / deepseek / glm，它们各走各的接口形态。协议若只挂在
+    // 中转站上，用户就得为同一个地址建好几条记录，密钥也要重复填。
+    //
+    // 模型没显式选定协议时，按模型名自动推导（见 defaultProtocolForModel）——
+    // 常见情况用户一个字都不用填。推导值只在显示与保存时使用，落盘后就是
+    // 普通的具体协议，运行时不依赖推导。
+
+    /** 该模型实际生效的协议：显式选定的优先，否则按模型名推导 */
+    modelProtocolType(pid: string, mid: string): ProviderType {
+      const draft = this.getDraft(pid)
+      const model = (draft.models || []).find((m: any) => m.id === mid)
+      if (isProviderType(model?.type))
+        return model.type
+      return defaultProtocolForModel(draft.baseUrl ?? '', model?.apiModel ?? '')
+    },
+
+    /**
+     * 是否还没显式选过协议（当前显示的是推导值）。
+     * 仅用于给分段控件加一个提示态，不影响存储。
+     */
+    modelProtocolIsAuto(pid: string, mid: string): boolean {
+      const model = (this.getDraft(pid).models || []).find((m: any) => m.id === mid)
+      return !isProviderType(model?.type)
+    },
+
+    /** 该模型实际请求到的完整地址 —— 协议不同路径就不同，必须按模型算 */
+    modelRequestUrlPreview(pid: string, mid: string): string {
+      const draft = this.getDraft(pid)
+      return buildRequestUrlPreview(this.modelProtocolType(pid, mid), draft.baseUrl ?? '')
+    },
+
+    /**
+     * 显式指定模型协议。
+     *
+     * 参数是**协议家族**而不是 ProviderType —— 分段控件给的是用户视角的三档
+     * （Anthropic / OpenAI / Gemini），而 'openai' 不是合法的 ProviderType。
+     * 这里必须映射一次，否则会往配置里写进一个 isProviderType 不认的值，
+     * 结果是"点了没反应"（回落成自动推导）。
+     */
+    setModelProtocol(pid: string, mid: string, family: ProtocolFamily) {
+      const draft = this.ensureDraft(pid)
+      const model = (draft.models || []).find((m: any) => m.id === mid)
+      if (!model)
+        return
+      model.type = providerTypeOf(family)
+      this.normalizeAuthKind(pid)
+      // 探测结果描述的是旧协议，留着会误导
+      this.clearModelTest(mid)
+      this.protocolDetections = { ...this.protocolDetections, [mid]: null }
+    },
+
+    /**
+     * 把自动推导出的协议固化到每个模型上。
+     *
+     * 交给 shared/providerProtocol 实现而不是在这里重写：服务端在测试路径上也要
+     * 做同一件事（见 panel-provider 的 testModel），两处必须用同一套规则。
+     */
+    materializeModelProtocols(provider: any): any {
+      return materializeModelProtocols(provider)
+    },
+
+    /**
+     * 可选协议家族 —— 每套协议对每个模型都是候选，不做过滤。
+     * 参数只为模板调用方便而保留。
+     */
+    modelProtocolOptions(): readonly ProtocolFamilyOption[] {
+      return PROTOCOL_FAMILY_OPTIONS
+    },
+
+    /** 当前生效协议所属的家族（用于高亮分段控件） */
+    modelProtocolSelection(pid: string, mid: string): ProtocolFamily {
+      return familyOf(this.modelProtocolType(pid, mid))
+    },
+
+    /** 人类可读的协议名 —— 折叠头部的标签用 */
+    modelProtocolLabel(pid: string, mid: string): string {
+      return describeProviderType(this.modelProtocolType(pid, mid))
+    },
+
+    /** 探测结果明细 —— 全部打不通时把每种协议各自的错误列出来 */
+    protocolAttemptsText(mid: string): string {
+      const detection = this.protocolDetections[mid]
+      if (!detection?.attempts?.length)
+        return ''
+      return detection.attempts
+        .map((attempt: { type: ProviderType, result: ModelTestResult }) => {
+          const label = describeProviderType(attempt.type)
+          if (attempt.result.status === 'success')
+            return `${label}: OK`
+          if (attempt.result.status === 'cancelled')
+            return `${label}: cancelled`
+          return `${label}：${errorLabelFor(attempt.result.errorKind)} —— ${attempt.result.message}`
+        })
+        .join('\n')
+    },
+
+    // ── 协议自动探测 ──
+    //
+    // 「不必自己选协议」的落地点：不从 URL 猜（猜不准 —— 同一个 host:port
+    // 往往同时挂了两套路径），而是拿每套协议各发一次真实请求，用结果说话。
+    // 全部失败时把每种协议各自的错误一并列出，比"只有一种能通"信息量大得多。
+
+    _protocolResolvers: {} as Record<string, (outcome: { ok: boolean, detection?: ProtocolDetection, error?: string }) => void>,
+
+    _detectAndWait(pid: string, mid: string) {
+      return new Promise<{ ok: boolean, detection?: ProtocolDetection, error?: string }>((resolve) => {
+        const requestId = uid('probe')
+        this._protocolResolvers[requestId] = resolve
+        this.post('detectProtocol', {
+          requestId,
+          pid,
+          mid,
+          // 带上 draft：用户常是「填完地址立刻想探一下」，此时还没保存
+          draft: JSON.parse(JSON.stringify(this.getDraft(pid))),
+        })
+      })
+    },
+
+    async detectProtocol(pid: string, mid: string) {
+      if (this.protocolDetecting[mid])
+        return
+      const before = this.modelProtocolType(pid, mid)
+      this.protocolDetecting = { ...this.protocolDetecting, [mid]: true }
+      this.protocolDetections = { ...this.protocolDetections, [mid]: null }
+      try {
+        const outcome = await this._detectAndWait(pid, mid)
+        if (!outcome.ok || !outcome.detection) {
+          this.toast(`Protocol detection failed: ${outcome.error ?? 'unknown error'}`, 'error', 8000)
+          return
+        }
+        const detection = outcome.detection as ProtocolDetection
+        this.protocolDetections = { ...this.protocolDetections, [mid]: detection }
+
+        if (!detection.detected) {
+          const detail = detection.attempts
+            .map((attempt: ProtocolAttempt) => `${describeProviderType(attempt.type)}：${describeAttempt(attempt.result)}`)
+            .join('；')
+          this.toast(`None of the four protocols worked — ${detail}`, 'error', 15000)
+          return
+        }
+        // 原本那套就能用：明确说"无需改动"，而不是偷偷写一个和原来相同的值
+        if (detection.detected === before) {
+          this.toast(`${describeProviderType(detection.detected)} works; no config change needed`, 'info', 6000)
+          return
+        }
+        this.setModelProtocol(pid, mid, detection.detected)
+        this.toast(`Switched to ${describeProviderType(detection.detected)} — remember to save`, 'info', 10000)
+      }
+      finally {
+        const { [mid]: _removed, ...rest } = this.protocolDetecting
+        this.protocolDetecting = rest
+      }
+    },
+
+    // ── 用量统计（缓存仪表盘） ──
+
+    /** 首屏是否已经主动拉过统计，见 message 处理器里的 usageBootstrapped */
+    usageBootstrapped: false,
+
+    toggleUsage() {
+      this.usageOpen = !this.usageOpen
+      if (this.usageOpen)
+        this.loadUsageStats()
+    },
+
+    loadUsageStats() {
+      if (this.usageLoading)
+        return
+      this.usageLoading = true
+      this.usageError = ''
+      this.post('loadUsageStats', { requestId: uid('usage') })
+    },
+
+    /**
+     * 紧凑数字。统计面板一行里要塞下 6~7 位 token 数，原样显示会把布局挤爆，
+     * 精确值通过 title 悬浮给出。
+     */
+    formatCount(value: number | null | undefined): string {
+      if (value === null || value === undefined || !Number.isFinite(value))
+        return '0'
+      const magnitude = Math.abs(value)
+      if (magnitude >= 1_000_000_000)
+        return `${(value / 1_000_000_000).toFixed(1)}B`
+      if (magnitude >= 1_000_000)
+        return `${(value / 1_000_000).toFixed(1)}M`
+      if (magnitude >= 10_000)
+        return `${(value / 1_000).toFixed(1)}K`
+      return String(Math.round(value))
+    },
+
+    /** 命中率 null 时显示 — 而不是 0%，"没数据"和"零命中"必须能区分 */
+    formatPercent(rate: number | null | undefined): string {
+      if (rate === null || rate === undefined || !Number.isFinite(rate))
+        return '—'
+      return `${(rate * 100).toFixed(1)}%`
+    },
+
+    usageTotals() {
+      return this.usageStats?.total ?? null
+    },
+
+    usageHasData(): boolean {
+      return (this.usageStats?.total?.calls ?? 0) > 0
+    },
+
+    usageModelRows() {
+      return (this.usageStats?.byModel ?? []).slice(0, 6)
+    },
+
+    usageDays() {
+      return this.usageStats?.byDay ?? []
+    },
+
+    /** 窗口内单日最大 prompt 规模 —— 柱状图的 100% 基准 */
+    _usagePeak(): number {
+      return this.usageDays().reduce(
+        (peak: number, day: any) => Math.max(peak, (day.cacheReadTokens ?? 0) + (day.nonCachedInputTokens ?? 0)),
+        0,
+      )
+    },
+
+    usageColumnHeight(day: any): number {
+      const peak = this._usagePeak()
+      if (peak <= 0)
+        return 0
+      const total = (day.cacheReadTokens ?? 0) + (day.nonCachedInputTokens ?? 0)
+      return Math.max(2, Math.round((total / peak) * 100))
+    },
+
+    /** 柱内命中缓存部分占比（占该柱自身高度） */
+    usageCachedShare(day: any): number {
+      const total = (day.cacheReadTokens ?? 0) + (day.nonCachedInputTokens ?? 0)
+      if (total <= 0)
+        return 0
+      return Math.round(((day.cacheReadTokens ?? 0) / total) * 100)
+    },
+
+    /** 命中率色调：低于 20% 基本说明前缀缓存没生效，值得提示 */
+    usageTone(rate: number | null | undefined): string {
+      if (rate === null || rate === undefined)
+        return 'flat'
+      if (rate >= 0.6)
+        return 'ok'
+      if (rate >= 0.2)
+        return 'warn'
+      return 'bad'
+    },
+
+    // ── 柱状图悬浮详情 ──
+    //
+    // 不用原生 title：它由操作系统绘制，弹出延迟约 1s 且无法做动画，在 14 根柱子
+    // 之间横向对比时要等它出现；而且它跟着指针走，读数还得来回找。
+    // 这里自己维护一份悬浮态，位置由列索引算出并夹在容器内，首尾两列不会溢出面板。
+
+    usageHover: null as null | { day: any, leftPercent: number },
+
+    setUsageHover(day: any, index: number, count: number) {
+      const center = count <= 0 ? 50 : ((index + 0.5) / count) * 100
+      // 夹在 16%~84%：提示框自身有宽度，贴边会被面板裁掉
+      this.usageHover = { day, leftPercent: Math.min(84, Math.max(16, center)) }
+    },
+
+    clearUsageHover() {
+      this.usageHover = null
+    },
+
+    usageTipStyle(): string {
+      return `left:${this.usageHover?.leftPercent ?? 50}%`
+    },
+
+    usageHoverRows(): Array<{ label: string, value: string }> {
+      const day = this.usageHover?.day
+      if (!day)
+        return []
+      return [
+        { label: 'prompt', value: this.formatCount((day.cacheReadTokens ?? 0) + (day.nonCachedInputTokens ?? 0)) },
+        { label: 'cached', value: this.formatCount(day.cacheReadTokens) },
+        { label: 'new', value: this.formatCount(day.nonCachedInputTokens) },
+        { label: 'output', value: this.formatCount(day.outputTokens) },
+        { label: 'hit rate', value: this.formatPercent(day.cacheHitRate) },
+        { label: 'calls', value: String(day.calls ?? 0) },
+      ]
+    },
+
+    /** 图表横轴范围说明 —— 14 个具体日期挤在侧边栏宽度里读不清 */
+    usageRangeLabel(): string {
+      const days = this.usageDays()
+      if (days.length === 0)
+        return ''
+      const first = String(days[0]?.date ?? '')
+      const last = String(days[days.length - 1]?.date ?? '')
+      const short = (value: string) => value.slice(5)
+      return `${short(first)} → ${short(last)} · ${days.length} days`
+    },
+
+    // ── 缓存写入指标 ──
+    //
+    // 不是所有中转站都单独上报 cache_creation_input_tokens。已对这个中转站实测确认：
+    // 它的 usage 永远只有 3 个字段 —— input_tokens / output_tokens / cache_read_input_tokens，
+    // **没有 cache_creation_input_tokens**。写缓存的那部分被直接并进 input_tokens：
+    //   冷启动   input=6342                        （6342 全部按普通输入上报）
+    //   热命中   input=198, cache_read=6144         （198 + 6144 = 6342，对得上）
+    // 注意「读」是真实的：cache_read 稳定返回，96%+ 的命中率不是算错。
+    //
+    // 显示 0 会被读成"从没写过缓存"（能读就必然写过），显示 — 又像是指标坏了。
+    // 所以这里给一个**推算值**并明确标注出来：
+    // 按 Anthropic 口径，新建缓存的就是本轮首次出现的 prompt token，
+    // 而上游已经把它并进了 input_tokens —— 那 input_tokens 就是写入量的可用估计。
+
+    usageCacheWriteReported(): boolean {
+      const totals = this.usageTotals()
+      if (!totals)
+        return true
+      // 有缓存命中却始终没有写入计数 → 该中转站不单独上报这个字段
+      return !(totals.cacheWriteTokens === 0 && totals.cacheReadTokens > 0)
+    },
+
+    /** 上游上报就用上报值；不报则用未命中输入推算 */
+    usageCacheWriteValue(): number {
+      const totals = this.usageTotals()
+      if (!totals)
+        return 0
+      return this.usageCacheWriteReported()
+        ? (totals.cacheWriteTokens ?? 0)
+        : (totals.nonCachedInputTokens ?? 0)
+    },
+
+    usageCacheWriteEstimated(): boolean {
+      return !this.usageCacheWriteReported()
+    },
+
+    /**
+     * 推算值的解释放在悬浮里。
+     * 常驻说明文字没人看，还占掉半屏 —— 面板上只留一个 est. 角标。
+     */
+    usageCacheWriteTitle(): string {
+      if (this.usageCacheWriteReported())
+        return 'Tokens spent to build the cache — paid now, read back later'
+      return 'Estimated: this relay does not report cache_creation_input_tokens, so the figure shown is the '
+        + 'non-cached input for the window — those are the tokens that had to be written to cache.'
+    },
+
+    // ── 二次确认弹窗 ──
+    //
+    // 删除 provider 会立刻落盘，model 删除则要等 Save —— 文案里说清楚，
+    // 否则用户会以为没保存就能随便点。
+
+    requestDeleteProvider(pid: string) {
+      const provider = this.getProviderView(pid)
+      const modelCount = (provider.models || []).length
+      const isUnsaved = !this.baseProvider(pid)
+      const name = provider.name || pid
+      this.confirmDialog = {
+        kind: 'deleteProvider',
+        title: 'Delete provider',
+        message: isUnsaved
+          ? `"${name}" has not been saved yet; discarding it only affects this panel.`
+          : `"${name}"${modelCount > 0 ? ` and its ${modelCount} model(s)` : ''} will be removed from providers.json.`,
+        warning: isUnsaved ? undefined : 'This is written to disk immediately and cannot be undone from this panel.',
+        confirmLabel: isUnsaved ? 'Discard' : 'Delete',
+        pid,
+      }
+    },
+
+    requestRemoveModel(pid: string, mid: string) {
+      const provider = this.getProviderView(pid)
+      const model = (provider.models || []).find((x: any) => x.id === mid)
+      this.confirmDialog = {
+        kind: 'removeModel',
+        title: 'Remove model',
+        message: `"${model?.displayName || model?.apiModel || mid}" will be removed from "${provider.name || pid}".`,
+        warning: 'Takes effect after you save this provider.',
+        confirmLabel: 'Delete',
+        pid,
+        mid,
+      }
+    },
+
+    cancelConfirm() {
+      this.confirmDialog = null
+    },
+
+    confirmAction() {
+      const dialog = this.confirmDialog
+      if (!dialog)
+        return
+      // 先关闭再执行：删除会触发 saveProviders → state 回推 → 重渲染，
+      // 留着弹窗会让它在重渲染中被重建
+      this.confirmDialog = null
+      if (dialog.kind === 'deleteProvider')
+        this.deleteProvider(dialog.pid)
+      else if (dialog.kind === 'removeModel' && dialog.mid)
+        this.deleteModel(dialog.pid, dialog.mid)
+    },
+
     // ── 校验 ──
     validate(pid: string) {
       const p = this.getDraft(pid)
@@ -283,8 +944,8 @@ export function initApp(Alpine: AlpineType) {
 
       if (!p.name?.trim())
         errors.name = 'Name is required'
-      if (!['anthropic', 'openai-chat', 'openai-responses', 'gemini'].includes(p.type))
-        errors.type = 'Invalid type'
+      if (!isProviderType(p.type))
+        errors.type = 'Invalid protocol'
       if (p.baseUrl?.trim()) {
         try {
           void new URL(p.baseUrl.trim())
@@ -295,13 +956,13 @@ export function initApp(Alpine: AlpineType) {
       }
       if (!p.auth?.value?.trim())
         errors.authValue = 'Auth value is required'
-      // Anthropic 允许 apiKey / token 两种; 其他 provider 只允许 apiKey
-      if (p.type === 'anthropic') {
+      // Anthropic 允许 apiKey / token 两种; 其他协议只允许 apiKey
+      if (this.providerUsesAnthropic(pid)) {
         if (!['apiKey', 'token'].includes(p.auth?.kind))
           errors.authKind = 'Invalid auth kind'
       }
       else if (p.auth?.kind !== 'apiKey') {
-        errors.authKind = `${p.type} only supports apiKey`
+        errors.authKind = 'Only the Anthropic protocol accepts a Bearer token here'
       }
 
       // name 唯一
@@ -316,7 +977,7 @@ export function initApp(Alpine: AlpineType) {
       for (const m of p.models || []) {
         const me: Record<string, string> = {}
         if (!m.apiModel?.trim())
-          me.apiModel = 'API model is required'
+          me.apiModel = 'API Model is required'
         if (!m.displayName?.trim())
           me.displayName = 'Display name is required'
         if (modelIds.has(m.id))
@@ -324,7 +985,7 @@ export function initApp(Alpine: AlpineType) {
         modelIds.add(m.id)
         // contextTokenLimit 必填 — 影响 Cursor UI 上下文进度条
         if (m.contextTokenLimit === undefined || m.contextTokenLimit === null || m.contextTokenLimit === '') {
-          me.contextTokenLimit = 'Context token limit is required'
+          me.contextTokenLimit = 'Context limit is required'
         }
         else if (!Number.isFinite(Number(m.contextTokenLimit)) || Number(m.contextTokenLimit) <= 0 || !Number.isInteger(Number(m.contextTokenLimit))) {
           me.contextTokenLimit = 'Must be a positive integer'
@@ -332,7 +993,7 @@ export function initApp(Alpine: AlpineType) {
         // maxOutputTokens — noMaxTokens 开启时跳过必填校验
         if (!m.noMaxTokens) {
           if (m.maxOutputTokens === undefined || m.maxOutputTokens === null || m.maxOutputTokens === '') {
-            me.maxOutputTokens = 'Max output tokens is required'
+            me.maxOutputTokens = 'Max output is required'
           }
           else if (!Number.isFinite(Number(m.maxOutputTokens)) || Number(m.maxOutputTokens) <= 0 || !Number.isInteger(Number(m.maxOutputTokens))) {
             me.maxOutputTokens = 'Must be a positive integer'
@@ -351,13 +1012,13 @@ export function initApp(Alpine: AlpineType) {
           const b = m.thinkingBudgetTokens
           const maxOut = Number(m.maxOutputTokens) || 0
           if (b === undefined || b === null || b === '')
-            me.thinkingBudgetTokens = 'Required — enter budget tokens'
+            me.thinkingBudgetTokens = 'Required — enter a thinking budget'
           else if (Number(b) < 1024)
-            me.thinkingBudgetTokens = 'Min 1024'
+            me.thinkingBudgetTokens = 'Minimum 1024'
           else if (maxOut > 0 && Number(b) >= maxOut)
-            me.thinkingBudgetTokens = `Must be < Max Output Tokens (${maxOut})`
+            me.thinkingBudgetTokens = `Must be below the max output (${maxOut})`
           else if (maxOut === 0)
-            me.thinkingBudgetTokens = 'Set Max Output Tokens first'
+            me.thinkingBudgetTokens = 'Fill in max output first'
         }
         if (Object.keys(me).length > 0)
           modelErrors[m.id] = me
@@ -433,14 +1094,38 @@ export function initApp(Alpine: AlpineType) {
     },
 
     /**
-     * 切换 provider type 后规范化 auth.kind:
-     *   - anthropic 同时支持 apiKey / bearer token, 保留用户选择
-     *   - 其他 provider (openai-chat / openai-responses / gemini) 只支持 apiKey,
-     *     强制重置为 apiKey 避免旧的 "token" 残留污染
+     * 该中转站下是否有模型走 Anthropic 协议。
+     *
+     * Auth Kind 只在 Anthropic 下有意义（只有它同时接受 x-api-key 与
+     * Authorization: Bearer）；OpenAI / Gemini 都只有 apiKey 一种。
+     * 以前按 provider.type 判断，但协议已经挪到模型上，所以改为看模型。
+     * 还没有模型时按 true 处理 —— 让用户能先填完鉴权再配模型。
+     */
+    providerUsesAnthropic(pid: string): boolean {
+      const models = this.getDraft(pid).models || []
+      if (!models.length)
+        return true
+      return models.some((m: any) => this.modelProtocolType(pid, m.id) === 'anthropic')
+    },
+
+    /**
+     * 该中转站下是否有模型能用 HTTP 代理。
+     * Gemini SDK 没有 fetch 注入点，只有 Anthropic / OpenAI 能走代理。
+     */
+    providerUsesProxy(pid: string): boolean {
+      const models = this.getDraft(pid).models || []
+      if (!models.length)
+        return true
+      return models.some((m: any) => this.modelProtocolType(pid, m.id) !== 'gemini')
+    },
+
+    /**
+     * 规范化 auth.kind：非 Anthropic 一律重置为 apiKey，避免旧的 "token" 残留污染。
+     * Anthropic 同时支持两种，保留用户的选择。
      */
     normalizeAuthKind(pid: string) {
       const d = this.ensureDraft(pid)
-      if (d.type !== 'anthropic') {
+      if (!this.providerUsesAnthropic(pid)) {
         d.auth = { ...(d.auth || { value: '' }), kind: 'apiKey' }
       }
     },
@@ -463,7 +1148,7 @@ export function initApp(Alpine: AlpineType) {
           delete m.thinkingBudgetTokens
         }
         else {
-          const pType = d.type
+          const pType = this.modelProtocolType(pid, mid)
           if (!m.thinkingLevel && !m.thinkingBudgetTokens) {
             if (pType === 'anthropic')
               m.thinkingLevel = 'high'
@@ -565,7 +1250,7 @@ export function initApp(Alpine: AlpineType) {
       const m = (d.models || []).find((x: any) => x.id === mid)
       if (!m)
         return
-      const pType = d.type as string
+      const pType = this.modelProtocolType(pid, mid)
       const isOpenAI = pType === 'openai-chat' || pType === 'openai-responses'
 
       if (m.thinking && m.thinkingLevel) {
@@ -675,13 +1360,13 @@ export function initApp(Alpine: AlpineType) {
       const tmp = list[idx]
       list[idx] = list[target]
       list[target] = tmp
-      const merged = list.map((p: any) => this.drafts[p.id] ?? p)
+      const merged = list.map((p: any) => this.materializeModelProtocols(this.drafts[p.id] ?? p))
       this.post('saveProviders', { providers: JSON.parse(JSON.stringify(merged)) })
     },
 
     deleteProvider(pid: string) {
       const remaining = (this.state?.providers || []).filter((p: any) => p.id !== pid)
-      const merged = remaining.map((p: any) => this.drafts[p.id] ?? p)
+      const merged = remaining.map((p: any) => this.materializeModelProtocols(this.drafts[p.id] ?? p))
       delete this.drafts[pid]
       delete this.expanded[pid]
       delete this.modelExpanded[pid]
@@ -709,6 +1394,9 @@ export function initApp(Alpine: AlpineType) {
           return
         }
 
+        // 固化自动推导出的协议：服务端只认 model.type / provider.type，
+        // 不认识按模型名的推导规则，不固化就会出现"界面显示的和实际请求的不一致"
+        this.materializeModelProtocols(p)
         const snapshot = clone(p)
         const baseProviders = [...(this.state?.providers || [])]
         const idx = baseProviders.findIndex((x: any) => x.id === pid)
@@ -725,7 +1413,7 @@ export function initApp(Alpine: AlpineType) {
         })
       }
       catch (e) {
-        this.toast(`Save error: ${e instanceof Error ? e.message : String(e)}`, 'error')
+        this.toast(`Save failed: ${e instanceof Error ? e.message : String(e)}`, 'error')
       }
     },
 
@@ -819,11 +1507,11 @@ export function initApp(Alpine: AlpineType) {
         return
       const draft = this.getDraft(pid)
       if (!draft.baseUrl?.trim()) {
-        this.toast('Please set Base URL first', 'warn')
+        this.toast('Set the Base URL first', 'warn')
         return
       }
       if (!draft.auth?.value?.trim()) {
-        this.toast('Please set Auth value first', 'warn')
+        this.toast('Set the auth value first', 'warn')
         return
       }
       this.remoteModels = { ...this.remoteModels, [pid]: { loading: true } }
@@ -893,6 +1581,16 @@ export function initApp(Alpine: AlpineType) {
         if (base && providersEqual(base, s.drafts[pid]))
           delete s.drafts[pid]
       }
+      // 首次拿到 state 就拉一次用量统计。
+      //
+      // 不能只靠 setTab / toggleUsage 触发：面板打开时 activeTab 本来就是
+      // dashboard，那两个入口都不会被调用，于是首屏是空的 —— 必须切一次页签
+      // 才会去加载。放在这里而不是紧跟 ready，是因为收到 state 才说明扩展宿主
+      // 那侧已经就绪，此时发请求不会丢。
+      if (!s.usageBootstrapped) {
+        s.usageBootstrapped = true
+        s.loadUsageStats()
+      }
     }
     else if (msg?.type === 'saveProvidersResult') {
       if (msg.state) {
@@ -929,7 +1627,7 @@ export function initApp(Alpine: AlpineType) {
       const pid = msg.pid as string
       if (msg.error) {
         s.remoteModels = { ...s.remoteModels, [pid]: { loading: false, error: msg.error } }
-        s.toast(`Fetch models failed: ${msg.error}`, 'error', 6000)
+        s.toast(`Failed to fetch models: ${msg.error}`, 'error', 6000)
       }
       else {
         s.remoteModels = { ...s.remoteModels, [pid]: { loading: false, models: msg.models || [] } }
@@ -944,14 +1642,53 @@ export function initApp(Alpine: AlpineType) {
     else if (msg?.type === 'searchTestResult') {
       s.searchTesting = false
       s.searchTestResult = msg.ok
-        ? { level: 'ok', text: msg.text || 'OK' }
+        ? { level: 'ok', text: msg.text || 'Success' }
         : { level: 'error', text: msg.text || 'Failed' }
     }
     else if (msg?.type === 'fetchTestResult') {
       s.fetchTesting = false
       s.fetchTestResult = msg.ok
-        ? { level: 'ok', text: msg.text || 'OK' }
+        ? { level: 'ok', text: msg.text || 'Success' }
         : { level: 'error', text: msg.text || 'Failed' }
+    }
+    else if (msg?.type === 'modelTestResult') {
+      const mid = msg.mid as string
+      // 结果必须记住"用了哪种协议"：探测成功后就靠它回填到 provider 上。
+      // 冗余存一份在 result 里是为了排错时能从单条结果看出当时的口径。
+      const overrideType = isProviderType(msg.overrideType) ? msg.overrideType : undefined
+      s.modelTests = {
+        ...s.modelTests,
+        [mid]: { running: false, overrideType, result: msg.result as ModelTestResult },
+      }
+      // 批量测试靠这个 resolver 串起来 —— 必须等结果落到 state 之后再放行下一个
+      const testId = msg.testId as string | undefined
+      const resolve = testId ? s._testResolvers[testId] : null
+      if (testId && resolve) {
+        delete s._testResolvers[testId]
+        resolve()
+      }
+    }
+    else if (msg?.type === 'protocolDetected') {
+      const mid = String(msg.mid ?? '')
+      s.protocolDetecting = { ...s.protocolDetecting, [mid]: false }
+      const requestId = String(msg.requestId ?? '')
+      const resolveDetect = s._protocolResolvers[requestId]
+      if (resolveDetect) {
+        delete s._protocolResolvers[requestId]
+        resolveDetect(msg.error
+          ? { ok: false, error: String(msg.error) }
+          : { ok: true, detection: msg.detection as ProtocolDetection })
+      }
+    }
+    else if (msg?.type === 'usageStats') {
+      s.usageLoading = false
+      if (msg.error) {
+        s.usageError = String(msg.error)
+      }
+      else {
+        s.usageError = ''
+        s.usageStats = msg.summary as UsageSummary
+      }
     }
     else if (msg?.type === 'toast') {
       s.toast(msg.text, msg.level || 'info', msg.duration ?? 4000)

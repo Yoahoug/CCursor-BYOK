@@ -19,7 +19,17 @@ export function toProviderFamily(pt: ProviderType): ProviderFamily {
         case 'openai-chat':
         case 'openai-responses': return 'openai';
         case 'gemini': return 'gemini';
-        default: return 'anthropic';
+        default: {
+            // 这里不是"兜底默认值",而是**穷尽性断言**:
+            // 新增 ProviderType 成员时 pt 会收窄成该成员, 赋给 never 即编译报错,
+            // 强制在此补上映射。此前写的是 `default: return 'anthropic'`,
+            // 会把新 provider 静默当成 Anthropic 处理 —— 工具定义与提示词全错,
+            // 却一路不报错, 排查成本极高。
+            // 真走到这里说明配置校验漏了一处, 明确抛错远好过静默降级。
+            // (providersStore.withFallback 已在配置边界拦非法 type, 见 isProviderType)
+            const unreachable: never = pt;
+            throw new Error(`Unknown provider type: ${String(unreachable)}`);
+        }
     }
 }
 

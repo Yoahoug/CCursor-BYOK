@@ -5,11 +5,12 @@ import { ProviderFields } from './provider-fields'
 export function ProviderAccordion() {
   return (
     <div class="acc" {...{ 'x-bind:class': '{ \'dirty\': $store.app.isDirty(p.id) }' }}>
-      {/* Head — 始終可見 */}
+      {/* Head — 始终可见 */}
       <div class="acc-head" {...{ 'x-on:click': '$store.app.toggleExpand(p.id)' }}>
         <span class="acc-caret" {...{ 'x-text': '$store.app.expanded[p.id] ? \'▼\' : \'▶\'' }}></span>
         <span class="acc-title" {...{ 'x-text': '$store.app.getDraftOrOriginal(p.id).name || \'(unnamed)\'' }}></span>
-        <span class="acc-type" {...{ 'x-text': '$store.app.getDraftOrOriginal(p.id).type' }}></span>
+        {/* 显示人类可读的协议名, 而不是内部枚举 openai-responses */}
+        <span class="acc-type" {...{ 'x-text': '$store.app.typeLabel(p.id)' }}></span>
         <span class="acc-meta" {...{ 'x-text': '($store.app.getDraftOrOriginal(p.id).models || []).length + \' model\' + (($store.app.getDraftOrOriginal(p.id).models || []).length === 1 ? \'\' : \'s\')' }}></span>
         <span class="acc-dot" title="Unsaved changes" {...{ 'x-show': '$store.app.isDirty(p.id)' }}></span>
         <span class="acc-sort" {...{ 'x-on:click.stop': '' }}>
@@ -22,7 +23,7 @@ export function ProviderAccordion() {
         <ProviderFields />
         <ModelsSection />
         <div class="actions-bar">
-          <button class="danger" {...{ 'x-on:click': '$store.app.deleteProvider(p.id)' }}>Delete</button>
+          <button class="danger" {...{ 'x-on:click': '$store.app.requestDeleteProvider(p.id)' }}>Delete</button>
           <button class="ghost" {...{ 'x-on:click': '$store.app.resetProvider(p.id)' }}>Reset</button>
           <button {...{ 'x-on:click': '$store.app.saveProvider(p.id)' }}>Save</button>
         </div>

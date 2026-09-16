@@ -21,6 +21,7 @@ import {
 import type { SemanticTurn } from './semanticConversation';
 import { llmMessageToStoredMessage } from './storedTranscript';
 import { filterToolsForMode } from '../agent/toolkit/types';
+import { buildProviderBaseUrl } from '../../../shared/providerProtocol';
 
 export interface PreparedProviderConversation {
     normalizedMessages: LLMMessage[];
@@ -52,6 +53,15 @@ export interface ProviderRoundContext {
 
 export interface ProviderRuntime {
     provider: LLMProvider;
+    /** 用户可见的 provider 名称 —— 用量统计按它归因 */
+    providerName: string;
+    /**
+     * provider 的稳定 id —— 名称可以被用户改，id 不会。
+     * 统计记录同时落这两个，改名后才能把历史数据归到一起（见 shared/usageTypes.ts）。
+     */
+    providerId: string;
+    /** 协议类型 —— 各协议 usage 字段口径不同，落统计前要按它归一化 */
+    providerType: ProviderType;
     stateStrategy: ProviderStateStrategy;
     conversationCodec: ProviderConversationCodec;
     promptProfile: ProviderPromptProfile;
@@ -69,9 +79,11 @@ export interface ProviderRuntime {
 }
 
 /**
- * Provider SDK 实例缓存 — 按 ProviderEntry.id 维度复用 client。
- * 同一个 entry 的多次解析共享一个 client; 编辑 providers.json 后通过
- * resetProviderInstanceCache() 重置 (目前仅在测试用,生产期可加 watch 自动重置)。
+ * Provider SDK 实例缓存 — key 为 `${entry.id}\u0000${协议}`。
+ *
+ * 缓存键必须带上协议：同一个中转站的不同模型可以走不同协议（deepseek 走
+ * Anthropic、gpt 走 OpenAI），而它们共享同一个 entry.id。只按 id 缓存会让
+ * 后建的模型复用先建实例的协议 —— 表现为"测试通过、实际调用却打错路径"。
  */
 const providerInstances = new Map<string, LLMProvider>();
 
@@ -84,11 +96,19 @@ function instantiateProvider(entry: ProviderEntry): LLMProvider {
     }
 }
 
-function getProviderForEntry(entry: ProviderEntry): LLMProvider {
-    let inst = providerInstances.get(entry.id);
+function getProviderForEntry(entry: ProviderEntry, effectiveType: ProviderType): LLMProvider {
+    const cacheKey = `${entry.id}\u0000${effectiveType}`;
+    let inst = providerInstances.get(cacheKey);
     if (!inst) {
-        inst = instantiateProvider(entry);
-        providerInstances.set(entry.id, inst);
+        inst = instantiateProvider({
+            ...entry,
+            type: effectiveType,
+            // 地址是**前缀**，版本段由协议决定 —— 两个 SDK 对 /v1 的要求正好相反
+            // （Anthropic 不该带、OpenAI 必须带），共享的地址不可能同时喂对两家，
+            // 所以这里按生效协议换算一次。见 shared/providerProtocol.ts。
+            baseUrl: buildProviderBaseUrl(effectiveType, entry.baseUrl),
+        });
+        providerInstances.set(cacheKey, inst);
     }
     return inst;
 }
@@ -148,7 +168,10 @@ export function resolveProviderRuntime(modelId: string): ProviderRuntime {
         return mode ? filterToolsForMode(all, mode, isSubagent) : all;
     };
     return {
-        provider: getProviderForEntry(providerEntry),
+        provider: getProviderForEntry(providerEntry, resolved.provider),
+        providerName: providerEntry.name,
+        providerId: providerEntry.id,
+        providerType: resolved.provider,
         stateStrategy,
         conversationCodec,
         promptProfile,
@@ -178,8 +201,8 @@ export function resolveProviderRuntime(modelId: string): ProviderRuntime {
                 if (!thinkingLevel && !thinkingBudgetTokens) {
                     throw makeByokConnectError({
                         errorCode: ErrorDetails_Error.CUSTOM,
-                        title: 'Thinking configuration incomplete',
-                        detail: 'Thinking is enabled but neither Level nor Budget is set.\n\nOpen Cursor++ panel → edit the model to set a thinking level or budget.',
+                        title: 'Incomplete thinking config',
+                        detail: 'Thinking is enabled, but neither a level nor a budget is set.\n\nOpen the Cursor++ panel → edit this model and set a thinking level or budget.',
                         isRetryable: false,
                         additionalInfo: { model: resolved.apiModel },
                     });
@@ -189,7 +212,7 @@ export function resolveProviderRuntime(modelId: string): ProviderRuntime {
                         throw makeByokConnectError({
                             errorCode: ErrorDetails_Error.CUSTOM,
                             title: 'Invalid thinking budget',
-                            detail: `Thinking budget must be ≥ 1024 tokens (got ${thinkingBudgetTokens}).`,
+                            detail: `The thinking budget must be >= 1024 tokens (currently ${thinkingBudgetTokens}).`,
                             isRetryable: false,
                             additionalInfo: { model: resolved.apiModel, budget: String(thinkingBudgetTokens) },
                         });
@@ -197,8 +220,8 @@ export function resolveProviderRuntime(modelId: string): ProviderRuntime {
                     if (maxTokens !== undefined && thinkingBudgetTokens >= maxTokens) {
                         throw makeByokConnectError({
                             errorCode: ErrorDetails_Error.CUSTOM,
-                            title: 'Thinking budget exceeds output limit',
-                            detail: `Thinking budget (${thinkingBudgetTokens}) must be less than Max Output Tokens (${maxTokens}).`,
+                            title: 'Thinking budget exceeds max output',
+                            detail: `The thinking budget (${thinkingBudgetTokens}) must be less than the max output (${maxTokens}).`,
                             isRetryable: false,
                             additionalInfo: { model: resolved.apiModel, budget: String(thinkingBudgetTokens), maxTokens: String(maxTokens) },
                         });

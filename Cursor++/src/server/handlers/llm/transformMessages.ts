@@ -7,7 +7,7 @@
  *   3. 修复 assistant(tool_use...) ↔ tool_result 的配对/顺序
  *   4. 跨 provider thinking 降级
  */
-import type { ProviderType as DefaultsProviderType } from '../../data/defaults'
+import type { ProviderType } from '../../data/defaults'
 import { findToolByAlias, listBuiltinLlmTools } from '../agent/toolkit/registry'
 import { getProviderToolCatalog } from './toolCatalog'
 import type { LLMContentBlock, LLMMessage } from './types'
@@ -57,7 +57,11 @@ export function normalizeToolCallIdForGemini(id: string): string {
   return sanitizeId(id, 64)
 }
 
-export type ProviderType = 'anthropic' | 'openai-chat' | 'openai-responses' | 'gemini'
+// 复用配置层的定义，不再就地复制一份联合类型：
+// 将来新增 provider（如 bedrock）只需改 defaults.ts，这里的 switch 会因
+// 返回类型不完整而被 tsc 拦下，而不是两边各留一个"看起来对得上"的定义。
+// 仍 re-export，保持 `from './transformMessages'` 这条既有导入路径可用。
+export type { ProviderType }
 
 export interface RepairDiagnostics {
   inputMessages: number
@@ -392,7 +396,7 @@ function sanitizeUnsupportedHistoricalTools(
   targetProvider: ProviderType,
   diagnostics?: RepairDiagnostics,
 ): LLMMessage[] {
-  const builtinToolNames = listBuiltinLlmTools(targetProvider as DefaultsProviderType).map(tool => tool.name)
+  const builtinToolNames = listBuiltinLlmTools(targetProvider).map(tool => tool.name)
   const allowedToolNames = new Set(builtinToolNames)
   const allowedHistoricalToolNames = new Set<string>(allowedToolNames)
   const canonicalIntents = getProviderToolCatalog(targetProvider).getCanonicalToolIntents()

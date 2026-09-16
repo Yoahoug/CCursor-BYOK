@@ -29,9 +29,9 @@ export function isLikelyWindowsMsvcMissing(error: unknown): boolean {
 
 export function supermarkdownUnavailableMessage(_error?: Error): string {
   if (process.platform === 'win32') {
-    return 'Built-in Web Fetch is unavailable because supermarkdown native module failed to load. On Windows, install Microsoft Visual C++ Redistributable 2015-2022 x64 and restart Cursor.'
+    return 'Built-in Web Fetch unavailable: the supermarkdown native module failed to load. On Windows, install Microsoft Visual C++ Redistributable 2015-2022 x64 and restart Cursor.'
   }
-  return 'Built-in Web Fetch is unavailable because supermarkdown native module failed to load. Restart Cursor or reinstall Cursor++.'
+  return 'Built-in Web Fetch unavailable: the supermarkdown native module failed to load. Restart Cursor or reinstall Cursor++.'
 }
 
 export function setSupermarkdownNativeErrorNotifier(fn: (error: Error) => void): void {

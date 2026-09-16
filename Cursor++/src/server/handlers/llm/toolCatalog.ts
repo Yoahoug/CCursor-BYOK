@@ -1,5 +1,4 @@
 import type { LLMTool } from './types';
-import type { Provider } from '../../runtime-config';
 import type { ProviderType } from '../../data/defaults';
 import { getCursorAgentTools } from '../agent/cursorTools';
 
@@ -9,7 +8,7 @@ export interface CanonicalToolIntent {
 }
 
 export interface ProviderToolCatalog {
-    readonly provider: Provider;
+    readonly provider: ProviderType;
     readonly variant: 'main' | 'fallback';
     readonly promptVocabulary: string[];
     readonly observedTranscriptTools: string[];
@@ -20,7 +19,7 @@ export interface ProviderToolCatalog {
 const OPENAI_OBSERVED = ['Shell', 'Glob', 'rg', 'AwaitShell', 'ReadFile', 'Delete', 'EditNotebook', 'TodoWrite', 'ReadLints', 'WebSearch', 'WebFetch', 'GenerateImage', 'AskQuestion', 'Subagent', 'ListMcpResources', 'FetchMcpResource', 'SwitchMode', 'ApplyPatch', 'Write'];
 const OPENAI_VOCAB = ['Shell', 'ReadFile', 'ApplyPatch', 'Write', 'SwitchMode', 'CallDynamicTool', 'GetDynamicTools', 'ListMcpResources', 'FetchMcpResource', 'ReadLints'];
 
-const OBSERVED_TRANSCRIPT_TOOLS: Record<Provider, string[]> = {
+const OBSERVED_TRANSCRIPT_TOOLS: Record<ProviderType, string[]> = {
     'anthropic': ['Shell', 'Read', 'Edit', 'Write', 'Delete', 'Glob', 'Grep', 'ReadLints', 'WebSearch', 'WebFetch', 'AskQuestion', 'TodoWrite', 'Task', 'EditNotebook', 'GenerateImage', 'SwitchMode', 'AwaitShell', 'ListMcpResources', 'FetchMcpResource'],
     'openai-chat': OPENAI_OBSERVED,
     'openai-responses': OPENAI_OBSERVED,
@@ -32,7 +31,7 @@ const OBSERVED_TRANSCRIPT_TOOLS: Record<Provider, string[]> = {
 // 而是收进 namespace —— LLM 先用 GetDynamicTools 取 schema,再用 CallDynamicTool 调用。
 // 此前只有 openai 词表含 CallMcpTool,anthropic/gemini 会话即便读到了 schema 也无工具可调
 // (实测 2-Cometixy.log: hasMcpSection=true 但 promptVocabulary 无该工具)。
-const PROMPT_VOCABULARY: Record<Provider, string[]> = {
+const PROMPT_VOCABULARY: Record<ProviderType, string[]> = {
     'anthropic': ['Shell', 'Read', 'Edit', 'Write', 'Grep', 'Glob', 'ReadLints', 'TodoWrite', 'Task', 'SwitchMode', 'CallDynamicTool', 'GetDynamicTools', 'ListMcpResources', 'FetchMcpResource'],
     'openai-chat': OPENAI_VOCAB,
     'openai-responses': OPENAI_VOCAB,
@@ -65,15 +64,14 @@ const CANONICAL_INTENTS: CanonicalToolIntent[] = [
 
 class StaticProviderToolCatalog implements ProviderToolCatalog {
     constructor(
-        readonly provider: Provider,
+        readonly provider: ProviderType,
         readonly variant: 'main' | 'fallback',
         readonly promptVocabulary: string[],
         readonly observedTranscriptTools: string[],
-        private readonly providerType: ProviderType,
     ) {}
 
     listBuiltins(): LLMTool[] {
-        return getCursorAgentTools(this.providerType);
+        return getCursorAgentTools(this.provider);
     }
 
     getCanonicalToolIntents(): CanonicalToolIntent[] {
@@ -81,14 +79,11 @@ class StaticProviderToolCatalog implements ProviderToolCatalog {
     }
 }
 
-export function getProviderToolCatalog(provider: Provider, variant: 'main' | 'fallback' = 'main'): ProviderToolCatalog {
-    // Provider (runtime-config) 和 ProviderType (defaults) 的值域一致
-    const providerType = provider as ProviderType;
+export function getProviderToolCatalog(provider: ProviderType, variant: 'main' | 'fallback' = 'main'): ProviderToolCatalog {
     return new StaticProviderToolCatalog(
         provider,
         variant,
         PROMPT_VOCABULARY[provider],
         OBSERVED_TRANSCRIPT_TOOLS[provider],
-        providerType,
     );
 }

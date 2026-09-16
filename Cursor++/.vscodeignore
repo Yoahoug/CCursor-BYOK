@@ -1,6 +1,9 @@
 .vscode/**
 .vscode-test/**
 .obfuscate-tmp/**
+/*.vsix
+# 调试用的 DOM 快照（26 个 html，约 7.4MB）—— 占了整个包的一半以上，且运行时完全用不到
+.preview/**
 out/**
 src/**
 tools/**

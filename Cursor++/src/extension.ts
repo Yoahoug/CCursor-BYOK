@@ -113,7 +113,7 @@ function log(level: SseLogLevel, msg: string): void {
 }
 
 function showPortOccupiedMessage(port: number): void {
-  const text = `Cursor++ Server cannot start because port ${port} is already used by another process. Close the process using this port, then restart Cursor.`
+  const text = `Cursor++ server cannot start: port ${port} is already used by another process. Close that process and restart Cursor.`
   log('error', `[SRV] ${text}`)
   vscode.window.showErrorMessage(text)
 }
@@ -343,21 +343,21 @@ function renderStatusBar() {
   const serverIcon = s.server === 'offline' ? '$(close)' : '$(check)'
 
   // 主 tooltip 行 — 保留旧 Server 描述形态
-  const src = s.server === 'local' ? 'this instance' : 'another instance'
+  const src = s.server === 'local' ? 'this window' : 'another window'
   const serverTip = s.serverIssue === 'port_occupied'
     ? `Cursor++ — port ${s.port} is occupied by another process`
     : s.server === 'offline'
-      ? 'Cursor++ — Server offline'
-      : `Cursor++ — Server :${s.port} (${src})`
+      ? 'Cursor++ — server not running'
+      : `Cursor++ — server on :${s.port} (${src})`
 
   // BYOK mode 后缀 + tooltip 行
   const byokGlyph = s.byokMode ? '◉' : '○'
   const byokTip = s.byokMode
-    ? 'BYOK ON — using local providers.json'
-    : 'BYOK OFF — passing through to official Cursor'
+    ? 'BYOK enabled — using your local providers.json'
+    : 'BYOK disabled — passing through to the official Cursor backend'
 
   statusBarItem.text = `${serverIcon} BYOK ${byokGlyph}`
-  statusBarItem.tooltip = `${serverTip}\n${byokTip}\n\nClick: toggle BYOK Mode`
+  statusBarItem.tooltip = `${serverTip}\n${byokTip}\n\nClick to toggle BYOK mode`
   statusBarItem.backgroundColor = s.byokMode
     ? undefined
     : new vscode.ThemeColor('statusBarItem.warningBackground')
@@ -372,10 +372,10 @@ async function toggleServer() {
   if (s.server === 'local') {
     await stopServer()
     log('info', '[SRV] stopped')
-    vscode.window.showInformationMessage('Cursor++ BYOK Server stopped')
+    vscode.window.showInformationMessage('Cursor++ server stopped')
   }
   else if (s.server === 'remote') {
-    vscode.window.showInformationMessage('Server is running in another Cursor instance')
+    vscode.window.showInformationMessage('Server is running in another Cursor window')
     return
   }
   else {
@@ -445,7 +445,7 @@ async function doStartServer() {
     }
     else {
       log('error', `[SRV] failed to start: ${msg}`)
-      vscode.window.showErrorMessage(`Cursor++ Server failed: ${msg}`)
+      vscode.window.showErrorMessage(`Cursor++ server failed to start: ${msg}`)
     }
   }
 }
@@ -490,7 +490,7 @@ export async function activate(context: vscode.ExtensionContext) {
       // 2. 触发 renderer hook 主动刷新模型列表 (借助捕获的 aiService 引用)
       bumpRefreshSignal()
       const label = next.byokMode ? 'BYOK enabled' : 'BYOK disabled (using official Cursor)'
-      vscode.window.showInformationMessage(`${label}. Model list will refresh automatically.`)
+      vscode.window.showInformationMessage(`${label}. The model list will refresh automatically.`)
     }),
     vscode.commands.registerCommand('cursor2plus.editRoutes', () => {
       vscode.window.showTextDocument(vscode.Uri.file(getRoutesFilePath()))

@@ -1,7 +1,13 @@
 import { Autocomplete } from './autocomplete'
 import { CustomSelect } from './custom-select'
 
-/** Level 选项按 Provider Type 分化 */
+/**
+ * 档位选项按协议分化。
+ *
+ * 这些 label 保持英文原样，因为它们是**直接发给 API 的枚举值**
+ * （reasoning_effort / thinkingLevel 的取值），不是界面文案 —— 翻译了用户就
+ * 没法拿它和中转站文档对照。
+ */
 const THINKING_LEVELS_ANTHROPIC = [
   { value: 'low', label: 'low' },
   { value: 'medium', label: 'medium' },
@@ -23,9 +29,9 @@ const THINKING_LEVELS_GEMINI = [
   { value: 'medium', label: 'medium' },
   { value: 'high', label: 'high' },
 ]
-const QS_LEVELS_ANTHROPIC = THINKING_LEVELS_ANTHROPIC.map(l => l.value)
-const QS_LEVELS_OPENAI = THINKING_LEVELS_OPENAI.map(l => l.value)
-const QS_LEVELS_GEMINI = THINKING_LEVELS_GEMINI.map(l => l.value)
+const QS_LEVELS_ANTHROPIC = THINKING_LEVELS_ANTHROPIC.map(level => level.value)
+const QS_LEVELS_OPENAI = THINKING_LEVELS_OPENAI.map(level => level.value)
+const QS_LEVELS_GEMINI = THINKING_LEVELS_GEMINI.map(level => level.value)
 
 /**
  * 单个 Model 卡片 — 在 x-for="m in ..." 作用域内使用
@@ -34,8 +40,11 @@ const QS_LEVELS_GEMINI = THINKING_LEVELS_GEMINI.map(l => l.value)
  *   - 非焦点时: x-effect 同步 store 值到 DOM (外部变更 / 初始化)
  *   - 焦点时: 只由 x-on:input 写 store, 不回写 DOM, 避免光标跳动
  *
- * apiModel 输入不再每次 keystroke 同步 m.id (会导致 x-for key 变化 → DOM 销毁重建 → 脱焦),
- * 改为 blur 时调用 syncModelId() 一次性同步。
+ * apiModel 输入不在每次 keystroke 同步 m.id (会导致 x-for key 变化, 触发 DOM
+ * 销毁重建, 进而脱焦), 改为 blur 时调用 syncModelId() 一次性同步。
+ *
+ * 协议相关分支一律读 $store.app.modelProtocolType(p.id, m.id) 而不是 p.type ——
+ * 协议只挂在模型上, 读 p.type 会拿到过时的缺省值 (见 effectiveProviderType)。
  */
 export function ModelCard() {
   return (
@@ -43,11 +52,23 @@ export function ModelCard() {
       <div class="model-head" x-on:click="$store.app.toggleModelExpand(p.id, m.id)">
         <span class="acc-caret" x-text="$store.app.modelExpanded[p.id]?.[m.id] ? '▼' : '▶'"></span>
         <span class="model-title" x-text="m.displayName || m.apiModel || m.id || '(unnamed model)'"></span>
-        {/* 右对齐的 defaultOn 开关 — 控制模型是否注册到 Cursor 选择器。
-            stop 阻止点击冒泡触发折叠/展开 */}
+        {/* 测试结果徽标 —— 未测试时不渲染, 保持列表干净; 点击即重测或取消 */}
+        <template x-if="$store.app.modelTestSummary(m.id)">
+          <button
+            type="button"
+            class="badge"
+            x-bind:class="'badge-' + $store.app.modelTestTone(m.id)"
+            x-bind:title="$store.app.modelTestDetail(m.id)"
+            {...{ 'x-on:click.stop': '$store.app.modelTest(m.id)?.running ? $store.app.cancelModelTest(m.id) : $store.app.testModel(p.id, m.id)' }}
+            x-text="$store.app.modelTestSummary(m.id)"
+          >
+          </button>
+        </template>
+        {/* 右对齐的开关, 控制模型是否注册到 Cursor 选择器。
+            stop 阻止点击冒泡触发折叠 */}
         <label
           class="model-switch"
-          title="启用后模型出现在 Cursor 选择器列表中"
+          title="Show this model in Cursor's model picker"
           {...{ 'x-on:click.stop': '' }}
         >
           <input
@@ -60,11 +81,11 @@ export function ModelCard() {
         </label>
       </div>
       <div class="model-body" x-show="$store.app.modelExpanded[p.id]?.[m.id]" x-cloak>
-        {/* API Model + autocomplete */}
+        {/* 模型名 + 自动补全 */}
         <div class="field autocomplete" {...{ 'x-on:click.outside': '$store.app.acClose()' }}>
           <label>
             {'API Model '}
-            <span style="opacity:.5;font-weight:normal;text-transform:none">(fuzzy catalog search)</span>
+            <span class="label-note">the real name sent to the endpoint</span>
           </label>
           <div class="ac-input-wrap">
             <input
@@ -83,7 +104,7 @@ export function ModelCard() {
             <button
               class="ac-toggle"
               type="button"
-              title="Browse model catalog"
+              title="Browse the built-in model catalog"
               tabindex={-1}
               {...{ 'x-on:mousedown.prevent': '$store.app.toggleCatalog(p.id, m.id, $refs.acInput)' }}
             >
@@ -94,12 +115,11 @@ export function ModelCard() {
           <Autocomplete />
         </div>
 
-        {/* Display Name — Cursor 客户端所有 UI 路径 (picker / inputbox / command palette)
-            都走 clientDisplayName fallback, 不需要独立的 short name */}
+        {/* 显示名称 —— Cursor 客户端所有 UI 路径都走这一个名字, 不需要另设简称 */}
         <div class="field">
           <label>
             {'Display Name '}
-            <span style="color:var(--vscode-errorForeground);font-weight:normal" x-show="me?.displayName">*</span>
+            <span class="req" x-show="me?.displayName">*</span>
           </label>
           <input
             type="text"
@@ -110,7 +130,107 @@ export function ModelCard() {
           <div class="err" x-show="me?.displayName" x-text="me?.displayName"></div>
         </div>
 
-        {/* Capabilities grid */}
+        {/* 协议 —— 每模型单独指定。一个中转站里 gemini / gpt / deepseek / glm
+            往往各走各的接口形态, 所以协议挂在模型上才对应真实结构。
+            没手动选过时按模型名自动推导, 角标显示 auto。 */}
+        <div class="field">
+          <label>
+            {'Protocol '}
+            <span class="label-note" x-show="$store.app.modelProtocolIsAuto(p.id, m.id)">auto</span>
+          </label>
+          <div class="seg">
+            <template x-for="fam in $store.app.modelProtocolOptions()" x-bind:key="fam.value">
+              <button
+                type="button"
+                class="seg-btn"
+                x-bind:class="{ 'active': $store.app.modelProtocolSelection(p.id, m.id) === fam.value }"
+                x-bind:title="fam.hint"
+                x-on:click="$store.app.setModelProtocol(p.id, m.id, fam.value)"
+                x-text="fam.label"
+              >
+              </button>
+            </template>
+          </div>
+          <div class="endpoint">
+            <span class="endpoint-label">Final URL</span>
+            <code class="endpoint-url" x-text="$store.app.modelRequestUrlPreview(p.id, m.id)"></code>
+          </div>
+          <template x-if="$store.app.baseUrlShape(p.id, m.id)?.level === 'warn'">
+            <div class="notice notice-warn">
+              <span x-text="$store.app.baseUrlShape(p.id, m.id).message"></span>
+            </div>
+          </template>
+        </div>
+
+        {/* 连通性测试与协议自动识别。
+            测试走的是真实协议路径 (复用 provider 实现), 所以测通了基本就是能用了,
+            而不只是"端口开着"。指标含义:
+              tok/s        整段耗时内的平均吞吐
+              首字         首个正文 token 的延迟 (思考 token 不计入)
+              首个响应事件  首个有效事件延迟, 与首字不同时额外展示 */}
+        <div class="field">
+          <div class="probe">
+            <div class="probe-row">
+              <button
+                type="button"
+                class="tiny"
+                {...{ 'x-bind:disabled': '$store.app.protocolDetecting[m.id] === true' }}
+                x-on:click="$store.app.detectProtocol(p.id, m.id)"
+                {...{ 'x-text': '$store.app.protocolDetecting[m.id] ? \'Detecting…\' : \'Auto-detect\'' }}
+              >
+              </button>
+              <button
+                type="button"
+                class="tiny secondary"
+                x-bind:class="{ 'secondary': !$store.app.modelTest(m.id)?.running }"
+                x-on:click="$store.app.modelTest(m.id)?.running ? $store.app.cancelModelTest(m.id) : $store.app.testModel(p.id, m.id)"
+                {...{ 'x-text': '$store.app.modelTest(m.id)?.running ? \'Cancel\' : \'Test\'' }}
+              >
+              </button>
+            </div>
+            <div class="hint">
+              Sends a real request per protocol.
+            </div>
+          </div>
+
+          <template x-if="$store.app.modelTest(m.id)?.result">
+            <div class="test-card" x-bind:class="{ 'test-card-bad': $store.app.modelTestTone(m.id) === 'bad', 'test-card-idle': $store.app.modelTestTone(m.id) === 'idle' }">
+              <div class="test-card-head">
+                <span class="test-card-summary" x-text="$store.app.modelTestSummary(m.id)"></span>
+                <button type="button" class="tiny ghost" x-on:click="$store.app.clearModelTest(m.id)">Clear</button>
+              </div>
+
+              <template x-if="$store.app.modelTest(m.id).result.status === 'success'">
+                <div class="test-metrics" x-text="$store.app.modelTestMetrics(m.id)"></div>
+              </template>
+
+              <template x-if="$store.app.modelTest(m.id).result.status === 'error'">
+                <div>
+                  <div class="test-error-kind" x-text="$store.app.modelTestErrorLabel(m.id)"></div>
+                  <div class="hint" x-text="$store.app.modelTestErrorHint(m.id)"></div>
+                  <code class="test-error-msg" x-text="$store.app.modelTest(m.id).result.message"></code>
+                </div>
+              </template>
+
+              {/* 逐个协议的失败原因 —— 全部打不通时, 信息量远比"只有一种能通"大 */}
+              <template x-if="$store.app.modelTest(m.id).result.status !== 'success' && $store.app.protocolDetections[m.id]?.attempts?.length">
+                <details class="test-raw">
+                  <summary>Per-protocol attempts</summary>
+                  <pre x-text="$store.app.protocolAttemptsText(m.id)"></pre>
+                </details>
+              </template>
+
+              <template x-if="$store.app.modelTestOutput(m.id)">
+                <details class="test-raw">
+                  <summary>Raw response</summary>
+                  <pre x-text="$store.app.modelTestOutput(m.id)"></pre>
+                </details>
+              </template>
+            </div>
+          </template>
+        </div>
+
+        {/* 能力开关 */}
         <div class="caps">
           <label class="check">
             <input type="checkbox" x-bind:checked="m.supportsAgent !== false" x-on:change="$store.app.updateModelField(p.id, m.id, 'supportsAgent', $event.target.checked)" />
@@ -124,34 +244,34 @@ export function ModelCard() {
             <input type="checkbox" x-bind:checked="m.supportsCmdK !== false" x-on:change="$store.app.updateModelField(p.id, m.id, 'supportsCmdK', $event.target.checked)" />
             {' Cmd+K'}
           </label>
-          <label class="check" title="Fast mode (OpenAI: service_tier=priority / Anthropic: fast-mode beta)">
+          <label class="check" title="Fast mode (OpenAI uses service_tier=priority, Anthropic uses the fast-mode beta)">
             <input type="checkbox" x-bind:checked="m.fastMode === true" x-on:change="$store.app.updateModelField(p.id, m.id, 'fastMode', $event.target.checked || undefined)" />
             {' Fast'}
           </label>
-          <label class="check thinking-cell" title="Enables extended reasoning">
+          <label class="check thinking-cell" title="Enable extended thinking">
             <input type="checkbox" x-bind:checked="m.thinking === true" x-on:change="$store.app.updateModelField(p.id, m.id, 'thinking', $event.target.checked)" />
             {' Thinking'}
           </label>
-          {/* ── Thinking 子控件 ──
-              thinking=false → 灰色提示
-              Anthropic → Level/Budget 模式切换器,互斥
-              OpenAI → Level 下拉 (thinking 开启时自动设 medium)
-              Gemini → Level/Budget 模式切换器,互斥 (Level 需 2.5+; Budget 兼容旧模型) */}
+          {/* 思考子控件:
+              未开启思考 → 灰色占位
+              Anthropic → 档位/预算 互斥切换
+              OpenAI    → 仅档位下拉
+              Gemini    → 档位/预算 互斥切换 (档位需 2.5+, 预算兼容旧模型) */}
           <template x-if="!m.thinking">
             <div class="check thinking-sub-disabled">
               <span style="opacity:.35;font-size:10px">—</span>
             </div>
           </template>
 
-          {/* ── Anthropic: 模式选择 Level ↔ Budget ── */}
-          <template x-if="m.thinking && p.type === 'anthropic'">
+          {/* Anthropic: 档位 或 预算 */}
+          <template x-if="m.thinking && $store.app.modelProtocolType(p.id, m.id) === 'anthropic'">
             <div class="check thinking-mode-group">
               <div class="thinking-mode-tabs">
                 <button
                   class="thinking-mode-tab"
                   x-bind:class="{'active': !!m.thinkingLevel && !m.thinkingBudgetTokens}"
                   x-on:click="$store.app.setThinkingMode(p.id, m.id, 'level')"
-                  title="Adaptive thinking (4.5-opus / 4.6+)"
+                  title="Adaptive level (4.5-opus / 4.6+)"
                 >
                   Level
                 </button>
@@ -169,7 +289,7 @@ export function ModelCard() {
                   valueExpr="m.thinkingLevel || ''"
                   changeExpr="$store.app.updateModelField(p.id, m.id, 'thinkingLevel', $value || undefined)"
                   options={THINKING_LEVELS_ANTHROPIC}
-                  title="Anthropic effort: low → max"
+                  title="Anthropic effort level"
                 />
               </div>
               <div class="thinking-mode-value" x-show="!m.thinkingLevel">
@@ -178,7 +298,7 @@ export function ModelCard() {
                   x-effect="if(document.activeElement !== $el) $el.value = m.thinkingBudgetTokens ?? ''"
                   x-on:input="$store.app.updateModelNumber(p.id, m.id, 'thinkingBudgetTokens', $event.target.value)"
                   placeholder="≥ 1024"
-                  title="budget_tokens (≥ 1024, < maxOutputTokens)"
+                  title="budget_tokens (must be >= 1024 and below max output)"
                   x-bind:class="{'invalid': me?.thinkingBudgetTokens}"
                   style="height:20px;padding:0 4px;font-size:10px;width:80px"
                 />
@@ -187,22 +307,20 @@ export function ModelCard() {
             </div>
           </template>
 
-          {/* ── OpenAI: Level only ── */}
-          <template x-if="m.thinking && (p.type === 'openai-chat' || p.type === 'openai-responses')">
+          {/* OpenAI: 只有档位 */}
+          <template x-if="m.thinking && ($store.app.modelProtocolType(p.id, m.id) === 'openai-chat' || $store.app.modelProtocolType(p.id, m.id) === 'openai-responses')">
             <div class="check thinking-level-cell">
               <CustomSelect
                 valueExpr="m.thinkingLevel || 'medium'"
                 changeExpr="$store.app.updateModelField(p.id, m.id, 'thinkingLevel', $value)"
                 options={THINKING_LEVELS_OPENAI}
-                title="reasoning_effort"
+                title="reasoning_effort level"
               />
             </div>
           </template>
 
-          {/* ── Gemini: 模式选择 Level ↔ Budget ──
-              Level (thinkingLevel) 需 Gemini 2.5+; Budget (thinkingBudget tokens) 兼容旧模型并可精确控制。
-              后端 gemini.ts 优先级: budget > level > auto(-1)。 */}
-          <template x-if="m.thinking && p.type === 'gemini'">
+          {/* Gemini: 档位 或 预算。后端优先级 budget > level > 自动 */}
+          <template x-if="m.thinking && $store.app.modelProtocolType(p.id, m.id) === 'gemini'">
             <div class="check thinking-mode-group">
               <div class="thinking-mode-tabs">
                 <button
@@ -217,7 +335,7 @@ export function ModelCard() {
                   class="thinking-mode-tab"
                   x-bind:class="{'active': !m.thinkingLevel && !!m.thinkingBudgetTokens}"
                   x-on:click="$store.app.setThinkingMode(p.id, m.id, 'budget')"
-                  title="thinkingBudget (兼容旧模型 / 精确控制)"
+                  title="thinkingBudget (works with older models, precise control)"
                 >
                   Budget
                 </button>
@@ -227,7 +345,7 @@ export function ModelCard() {
                   valueExpr="m.thinkingLevel || ''"
                   changeExpr="$store.app.updateModelField(p.id, m.id, 'thinkingLevel', $value || undefined)"
                   options={THINKING_LEVELS_GEMINI}
-                  title="Gemini thinkingLevel: minimal → high"
+                  title="Gemini thinkingLevel"
                 />
               </div>
               <div class="thinking-mode-value" x-show="!m.thinkingLevel">
@@ -236,7 +354,7 @@ export function ModelCard() {
                   x-effect="if(document.activeElement !== $el) $el.value = m.thinkingBudgetTokens ?? ''"
                   x-on:input="$store.app.updateModelNumber(p.id, m.id, 'thinkingBudgetTokens', $event.target.value)"
                   placeholder="tokens / -1 auto"
-                  title="thinkingBudget (tokens; -1=auto, 0=off on supported models)"
+                  title="thinkingBudget (-1 = auto, 0 = off)"
                   x-bind:class="{'invalid': me?.thinkingBudgetTokens}"
                   style="height:20px;padding:0 4px;font-size:10px;width:80px"
                 />
@@ -246,12 +364,12 @@ export function ModelCard() {
           </template>
         </div>
 
-        {/* Context + Output limits */}
+        {/* 上下文与输出上限 */}
         <div class="field-row">
           <div class="field">
             <label>
-              {'Context Token Limit '}
-              <span style="color:var(--vscode-errorForeground);font-weight:normal">*</span>
+              {'Context Limit '}
+              <span class="req">*</span>
             </label>
             <input
               type="number"
@@ -264,63 +382,62 @@ export function ModelCard() {
           </div>
           <div class="field">
             <label>
-              {'Max Output Tokens '}
-              <span style="color:var(--vscode-errorForeground);font-weight:normal" x-show="m.noMaxTokens !== true">*</span>
+              {'Max Output '}
+              <span class="req" x-show="m.noMaxTokens !== true">*</span>
             </label>
             <div style="display:flex;align-items:center;gap:6px">
-              {/* Off 仅切换 noMaxTokens 标志, 不清空 maxOutputTokens —
-                  发送侧 (providerRuntime: noMaxTokens ? undefined : maxOutputTokens) 已守卫,
-                  保留值才能在取消 Off 后恢复, 且禁用态灰显原值更直观 */}
+              {/* 仅切换"不发送"标志, 不清空已填的值 —— 发送侧已做守卫,
+                  保留原值才能在取消勾选后恢复, 禁用态灰显原值也更直观 */}
               <input
                 type="number"
                 x-effect="if(document.activeElement !== $el) $el.value = m.maxOutputTokens ?? ''"
                 x-on:input="$store.app.updateModelNumber(p.id, m.id, 'maxOutputTokens', $event.target.value)"
                 placeholder="required"
-                x-bind:placeholder="m.noMaxTokens === true ? 'disabled (omitted)' : 'required'"
+                {...{ 'x-bind:placeholder': 'm.noMaxTokens === true ? \'disabled (not sent)\' : \'required\'' }}
                 x-bind:disabled="m.noMaxTokens === true"
-                title="Maximum tokens per LLM response"
+                title="Max tokens for a single response"
                 x-bind:class="{'invalid': me?.maxOutputTokens}"
                 style="flex:1"
               />
-              <label class="check" style="white-space:nowrap;font-size:10px" title="Don't send max_output_tokens to LLM (for gateways that reject this param)">
+              <label class="check" style="white-space:nowrap;font-size:10px" title="Do not send this parameter to the endpoint; some gateways reject it">
                 <input
                   type="checkbox"
                   x-bind:checked="m.noMaxTokens === true"
                   x-on:change="$store.app.updateModelField(p.id, m.id, 'noMaxTokens', $event.target.checked)"
                 />
-                {' Off'}
+                {' Omit'}
               </label>
             </div>
             <div class="err" x-show="me?.maxOutputTokens" x-text="me?.maxOutputTokens"></div>
           </div>
         </div>
 
-        {/* Tooltip */}
+        {/* 提示气泡 */}
         <div class="field">
-          <label>Tooltip Markdown (hover in model picker)</label>
+          <label>Tooltip (shown on hover in Cursor's model picker, Markdown supported)</label>
           <textarea
             rows={2}
             x-effect="if(document.activeElement !== $el) $el.value = m.tooltipMarkdown || ''"
             x-on:input="$store.app.updateModelField(p.id, m.id, 'tooltipMarkdown', $event.target.value)"
-            placeholder="**Model name**<br/>Short description"
+            placeholder="**Model name**<br/>One-line description"
           >
           </textarea>
         </div>
 
-        {/* ── QuickSwitch Options (accordion) ── */}
+        {/* 快速切换参数（可折叠） */}
         <div class="qs-section" x-data="{ qsOpen: false }">
           <button class="qs-header" x-on:click="qsOpen = !qsOpen" type="button">
             <span class="qs-caret" x-text="qsOpen ? '▼' : '▶'"></span>
-            <span>QuickSwitch Options</span>
-            <span class="qs-hint" title="Checked options appear in Cursor's model picker Edit panel for runtime switching.">?</span>
+            <span>Quick-switch params</span>
+            <span class="qs-hint" title="Checked entries appear in the Edit panel of Cursor's model picker and can be toggled at runtime.">?</span>
           </button>
           <div class="qs-body" x-show="qsOpen" x-cloak>
 
-            {/* ── Anthropic: Thinking Toggle + Effort Levels ── */}
-            <template x-if="p.type === 'anthropic'">
-              <div class="qs-item" title="Expose Thinking on/off toggle in Edit panel">
+            {/* Anthropic: 思考开关 + 档位 */}
+            <template x-if="$store.app.modelProtocolType(p.id, m.id) === 'anthropic'">
+              <div class="qs-item" title="Expose the thinking toggle in the Edit panel">
                 <div class="qs-row">
-                  <span class="qs-label">Thinking Toggle</span>
+                  <span class="qs-label">Thinking</span>
                   <label class="qs-switch">
                     <input type="checkbox" x-bind:checked="m.parameters?.thinking === true" x-on:change="$store.app.setEditParam(p.id, m.id, 'thinking', $event.target.checked || undefined)" />
                     <span class="qs-switch-track"></span>
@@ -329,10 +446,10 @@ export function ModelCard() {
                 </div>
               </div>
             </template>
-            <template x-if="p.type === 'anthropic'">
-              <div class="qs-item" title="Expose effort level selector in Edit panel">
+            <template x-if="$store.app.modelProtocolType(p.id, m.id) === 'anthropic'">
+              <div class="qs-item" title="Expose the level picker in the Edit panel">
                 <div class="qs-row">
-                  <span class="qs-label">Effort Levels</span>
+                  <span class="qs-label">Level</span>
                   <label class="qs-switch">
                     <input type="checkbox" x-bind:checked="Array.isArray(m.parameters?.effort)" x-on:change={`$store.app.setEditParam(p.id, m.id, 'effort', $event.target.checked ? ${JSON.stringify(QS_LEVELS_ANTHROPIC)} : undefined)`} />
                     <span class="qs-switch-track"></span>
@@ -342,10 +459,10 @@ export function ModelCard() {
                 <template x-if="Array.isArray(m.parameters?.effort)">
                   <div class="qs-item-body">
                     <div class="qs-chips">
-                      {QS_LEVELS_ANTHROPIC.map(lv => (
-                        <label class="qs-chip" key={lv}>
-                          <input type="checkbox" x-bind:checked={`m.parameters?.effort?.includes('${lv}')`} x-on:change={`$store.app.toggleEditParamArrayItem(p.id, m.id, 'effort', '${lv}', $event.target.checked)`} />
-                          <span>{lv}</span>
+                      {QS_LEVELS_ANTHROPIC.map(level => (
+                        <label class="qs-chip" key={level}>
+                          <input type="checkbox" x-bind:checked={`m.parameters?.effort?.includes('${level}')`} x-on:change={`$store.app.toggleEditParamArrayItem(p.id, m.id, 'effort', '${level}', $event.target.checked)`} />
+                          <span>{level}</span>
                         </label>
                       ))}
                     </div>
@@ -354,11 +471,11 @@ export function ModelCard() {
               </div>
             </template>
 
-            {/* ── Gemini: Thinking Toggle + Effort Levels (different set) ── */}
-            <template x-if="p.type === 'gemini'">
-              <div class="qs-item" title="Expose Thinking on/off toggle in Edit panel">
+            {/* Gemini: 思考开关 + 档位（另一套枚举） */}
+            <template x-if="$store.app.modelProtocolType(p.id, m.id) === 'gemini'">
+              <div class="qs-item" title="Expose the thinking toggle in the Edit panel">
                 <div class="qs-row">
-                  <span class="qs-label">Thinking Toggle</span>
+                  <span class="qs-label">Thinking</span>
                   <label class="qs-switch">
                     <input type="checkbox" x-bind:checked="m.parameters?.thinking === true" x-on:change="$store.app.setEditParam(p.id, m.id, 'thinking', $event.target.checked || undefined)" />
                     <span class="qs-switch-track"></span>
@@ -367,10 +484,10 @@ export function ModelCard() {
                 </div>
               </div>
             </template>
-            <template x-if="p.type === 'gemini'">
-              <div class="qs-item" title="Expose effort level selector in Edit panel">
+            <template x-if="$store.app.modelProtocolType(p.id, m.id) === 'gemini'">
+              <div class="qs-item" title="Expose the level picker in the Edit panel">
                 <div class="qs-row">
-                  <span class="qs-label">Effort Levels</span>
+                  <span class="qs-label">Level</span>
                   <label class="qs-switch">
                     <input type="checkbox" x-bind:checked="Array.isArray(m.parameters?.effort)" x-on:change={`$store.app.setEditParam(p.id, m.id, 'effort', $event.target.checked ? ${JSON.stringify(QS_LEVELS_GEMINI)} : undefined)`} />
                     <span class="qs-switch-track"></span>
@@ -380,10 +497,10 @@ export function ModelCard() {
                 <template x-if="Array.isArray(m.parameters?.effort)">
                   <div class="qs-item-body">
                     <div class="qs-chips">
-                      {QS_LEVELS_GEMINI.map(lv => (
-                        <label class="qs-chip" key={lv}>
-                          <input type="checkbox" x-bind:checked={`m.parameters?.effort?.includes('${lv}')`} x-on:change={`$store.app.toggleEditParamArrayItem(p.id, m.id, 'effort', '${lv}', $event.target.checked)`} />
-                          <span>{lv}</span>
+                      {QS_LEVELS_GEMINI.map(level => (
+                        <label class="qs-chip" key={level}>
+                          <input type="checkbox" x-bind:checked={`m.parameters?.effort?.includes('${level}')`} x-on:change={`$store.app.toggleEditParamArrayItem(p.id, m.id, 'effort', '${level}', $event.target.checked)`} />
+                          <span>{level}</span>
                         </label>
                       ))}
                     </div>
@@ -392,11 +509,11 @@ export function ModelCard() {
               </div>
             </template>
 
-            {/* ── OpenAI: Reasoning Levels (single enum, None auto-prepended) ── */}
-            <template x-if="p.type === 'openai-chat' || p.type === 'openai-responses'">
-              <div class="qs-item" title="Expose reasoning level selector in Edit panel (None = off)">
+            {/* OpenAI: 推理档位 */}
+            <template x-if="$store.app.modelProtocolType(p.id, m.id) === 'openai-chat' || $store.app.modelProtocolType(p.id, m.id) === 'openai-responses'">
+              <div class="qs-item" title="Expose the reasoning level picker in the Edit panel (None = off)">
                 <div class="qs-row">
-                  <span class="qs-label">Reasoning Levels</span>
+                  <span class="qs-label">Reasoning level</span>
                   <label class="qs-switch">
                     <input type="checkbox" x-bind:checked="Array.isArray(m.parameters?.reasoning)" x-on:change={`$store.app.setEditParam(p.id, m.id, 'reasoning', $event.target.checked ? ${JSON.stringify(QS_LEVELS_OPENAI)} : undefined)`} />
                     <span class="qs-switch-track"></span>
@@ -406,10 +523,10 @@ export function ModelCard() {
                 <template x-if="Array.isArray(m.parameters?.reasoning)">
                   <div class="qs-item-body">
                     <div class="qs-chips">
-                      {QS_LEVELS_OPENAI.map(lv => (
-                        <label class="qs-chip" key={lv}>
-                          <input type="checkbox" x-bind:checked={`m.parameters?.reasoning?.includes('${lv}')`} x-on:change={`$store.app.toggleEditParamArrayItem(p.id, m.id, 'reasoning', '${lv}', $event.target.checked)`} />
-                          <span>{lv}</span>
+                      {QS_LEVELS_OPENAI.map(level => (
+                        <label class="qs-chip" key={level}>
+                          <input type="checkbox" x-bind:checked={`m.parameters?.reasoning?.includes('${level}')`} x-on:change={`$store.app.toggleEditParamArrayItem(p.id, m.id, 'reasoning', '${level}', $event.target.checked)`} />
+                          <span>{level}</span>
                         </label>
                       ))}
                     </div>
@@ -418,10 +535,10 @@ export function ModelCard() {
               </div>
             </template>
 
-            {/* Context options */}
-            <div class="qs-item" title="Expose context window size selector in Edit panel">
+            {/* 上下文档位 */}
+            <div class="qs-item" title="Expose the context window picker in the Edit panel">
               <div class="qs-row">
-                <span class="qs-label">Context Options</span>
+                <span class="qs-label">Context levels</span>
                 <label class="qs-switch">
                   <input type="checkbox" x-bind:checked="Array.isArray(m.parameters?.context)" x-on:change="$store.app.setEditParam(p.id, m.id, 'context', $event.target.checked ? [m.contextTokenLimit || 200000] : undefined)" />
                   <span class="qs-switch-track"></span>
@@ -440,7 +557,7 @@ export function ModelCard() {
                     <input
                       type="number"
                       class="qs-tag-input"
-                      placeholder="+ token count"
+                      placeholder="+ tokens"
                       {...{ 'x-on:keydown.enter.prevent': '$store.app.addEditParamContextValue(p.id, m.id, parseInt($event.target.value)); $event.target.value = ""' }}
                     />
                   </div>
@@ -448,10 +565,10 @@ export function ModelCard() {
               </template>
             </div>
 
-            {/* Fast toggle */}
-            <div class="qs-item" title="Expose Fast mode toggle in Edit panel">
+            {/* Fast 开关 */}
+            <div class="qs-item" title="Expose the Fast mode toggle in the Edit panel">
               <div class="qs-row">
-                <span class="qs-label">Fast Toggle</span>
+                <span class="qs-label">Fast toggle</span>
                 <label class="qs-switch">
                   <input type="checkbox" x-bind:checked="m.parameters?.fast === true" x-on:change="$store.app.setEditParam(p.id, m.id, 'fast', $event.target.checked || undefined)" />
                   <span class="qs-switch-track"></span>
@@ -464,7 +581,7 @@ export function ModelCard() {
         </div>
 
         <div class="actions-bar">
-          <button class="danger tiny" x-on:click="$store.app.deleteModel(p.id, m.id)">Remove Model</button>
+          <button class="danger tiny" {...{ 'x-on:click': '$store.app.requestRemoveModel(p.id, m.id)' }}>Delete Model</button>
         </div>
       </div>
     </div>

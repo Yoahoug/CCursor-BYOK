@@ -18,6 +18,14 @@ export function ModelsSection() {
         >
         </span>
         <span class="models-header-actions">
+          <button
+            class="tiny secondary"
+            {...{ 'x-bind:disabled': '$store.app.batchTesting[p.id] === true' }}
+            x-bind:title="'Test every model under this provider, one at a time so the speed numbers stay comparable'"
+            x-on:click="$store.app.testAllModels(p.id)"
+            x-text="$store.app.batchTesting[p.id] ? 'Testing…' : '⚡ Test All'"
+          >
+          </button>
           <button class="tiny secondary" {...{ 'x-on:click': '$store.app.fetchRemoteModels(p.id)' }}>↓ Fetch</button>
           <button class="tiny secondary" {...{ 'x-on:click': '$store.app.addModel(p.id)' }}>+ Add Model</button>
         </span>
@@ -55,11 +63,11 @@ export function ModelsSection() {
           {' '}
           <b>+ Add Model</b>
           {' '}
-          or
+          to add one by hand, or
           {' '}
           <b>↓ Fetch</b>
           {' '}
-          to get started.
+          to read the available list from the endpoint.
         </div>
       </template>
       <template {...{ 'x-for': 'm in ($store.app.getDraft(p.id).models || [])', 'x-bind:key': 'm.id' }}>

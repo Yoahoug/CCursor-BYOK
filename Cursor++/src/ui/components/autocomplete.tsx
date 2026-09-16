@@ -22,7 +22,14 @@ export function Autocomplete() {
             <span style="opacity:.55;font-weight:normal" x-text="r.providerName"></span>
           </div>
           <div class="ac-id" x-text="r.id"></div>
-          <div class="ac-meta" x-text="'ctx ' + $store.app.fmtCtx(r.contextLimit) + (r.reasoning ? ' · thinking' : '') + (r.toolCall ? ' · tools' : '') + (r.hasImages ? ' · images' : '')"></div>
+          <div
+            class="ac-meta"
+            x-text="'ctx ' + $store.app.fmtCtx(r.contextLimit)
+              + (r.reasoning ? ' · thinking' : '')
+              + (r.toolCall ? ' · tools' : '')
+              + (r.hasImages ? ' · images' : '')"
+          >
+          </div>
         </div>
       </template>
     </div>

@@ -100,13 +100,13 @@ async function fetchBuiltin(url: string): Promise<{ url: string, markdown: strin
       throw new Error(`HTTP ${response.status} ${response.statusText}`)
     const contentType = response.headers.get('content-type') ?? ''
     if (BINARY_TYPES.test(contentType))
-      throw new Error(`binary content type not supported: ${contentType}`)
+      throw new Error(`Unsupported content type: ${contentType}`)
     const contentLength = response.headers.get('content-length')
     if (contentLength && Number(contentLength) > MAX_RESPONSE_BYTES)
-      throw new Error(`response too large: ${contentLength} bytes`)
+      throw new Error(`Response too large: ${contentLength} bytes`)
     const text = await response.text()
     if (text.length > MAX_RESPONSE_BYTES)
-      throw new Error(`response body too large: ${text.length} bytes`)
+      throw new Error(`Response body too large: ${text.length} bytes`)
     const finalUrl = response.url || url
     let markdown: string
     if (contentType.includes('text/html') || /^<!doctype html/i.test(text) || /<html[\s>]/i.test(text))
@@ -229,7 +229,7 @@ function resolveTavilyCredentials(): { apiKey: string, baseUrl?: string } | null
 
 export async function performWebFetch(url: string): Promise<{ url: string, markdown: string }> {
   if (!isValidUrl(url))
-    throw new Error(`invalid or blocked URL: ${url}`)
+    throw new Error(`Invalid or blocked URL: ${url}`)
 
   const cached = fetchCache.get(url)
   if (cached && cached.expiresAt > Date.now())
@@ -264,7 +264,7 @@ export async function performWebFetch(url: string): Promise<{ url: string, markd
         }
         catch (builtinError) {
           const builtinMessage = builtinError instanceof Error ? builtinError.message : String(builtinError)
-          throw new Error(`Tavily fetch failed: ${tavilyMessage}. Built-in fallback also failed: ${builtinMessage}`)
+          throw new Error(`Tavily extract failed: ${tavilyMessage}. Built-in fallback also failed: ${builtinMessage}`)
         }
       }
       break
@@ -451,7 +451,7 @@ async function searchWithProvider(provider: SearchProviderEntry, searchTerm: str
     case 'brave': return searchBrave(provider.apiKey!, searchTerm, max)
     case 'jina': return searchJina(provider.apiKey || '', searchTerm, max)
     case 'firecrawl': return searchFirecrawl(provider.apiKey!, searchTerm, max, provider.baseUrl)
-    default: throw new Error(`unknown search provider: ${provider.type}`)
+    default: throw new Error(`Unknown search provider: ${provider.type}`)
   }
 }
 
@@ -483,7 +483,7 @@ export async function performWebSearch(searchTerm: string, config?: WebToolsConf
 
   if (enabled.length === 0) {
     if (!allowDdgFallback)
-      throw new Error('No search provider configured. Enable one in the Cursor++ panel (Web Tools).')
+      throw new Error('No search provider is enabled. Enable one under "Web Tools" in the Cursor++ panel.')
     return searchDuckDuckGo(searchTerm, cfg.maxResults)
   }
 
@@ -598,7 +598,7 @@ export async function performFetchTest(
   }
 
   if (providerType !== 'tavily')
-    throw new Error(`unknown fetch provider: ${providerType}`)
+    throw new Error(`Unknown fetch provider: ${providerType}`)
   if (!apiKey)
     throw new Error('API key is empty — Tavily fetch reuses the key from the Search tab')
 

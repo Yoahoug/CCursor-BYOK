@@ -11,7 +11,7 @@
  */
 import type { ProviderEntry, ProviderModel, ProvidersConfig } from '../data/defaults'
 import { existsSync, unwatchFile, watchFile } from 'node:fs'
-import { DEFAULT_PROVIDERS } from '../data/defaults'
+import { DEFAULT_PROVIDERS, isProviderType } from '../data/defaults'
 import { logger } from '../logger'
 import { readJsonOrNull, withSerial, writeJsonAtomic } from './atomic'
 import { getProvidersFilePath } from './paths'
@@ -52,21 +52,67 @@ function rebuildIndex(config: ProvidersConfig): Map<string, ResolvedProviderMode
   return idx
 }
 
+/**
+ * 归一化模型级的协议覆盖（ProviderModel.type）。
+ *
+ * type 写错时**只剥掉这一个字段**，不丢整个模型 —— 模型会安静地回落到
+ * provider.type，仍然可用。同时留一条日志：否则用户会对着一份"看起来改了、
+ * 实际没生效"的配置排查很久。
+ */
+function normalizeModelOverrides(providerId: string, models: unknown[]): ProviderModel[] {
+  return models.map((raw) => {
+    const model = raw as ProviderModel
+    if (!model || typeof model !== 'object' || model.type === undefined)
+      return model
+    if (isProviderType(model.type))
+      return model
+    logger.warn(
+      { providerId, modelId: model.id, type: model.type },
+      '[CFG] unrecognized model.type — override ignored, falling back to provider.type',
+    )
+    const rest = { ...model }
+    delete rest.type
+    return rest
+  })
+}
+
 function withFallback(loaded: Partial<ProvidersConfig> | null): ProvidersConfig {
   if (!loaded || !Array.isArray(loaded.providers))
     return clone(DEFAULT_PROVIDERS)
+
+  const providers: ProviderEntry[] = []
+  for (const provider of loaded.providers) {
+    if (!provider || typeof provider !== 'object') {
+      logger.warn('[CFG] providers.json contains a non-object entry — skipped')
+      continue
+    }
+
+    // type 是这里唯一无法容错的字段 —— 它决定该 provider 用哪套工具定义与提示词。
+    // 认不出来就整个丢掉并告知用户：若在此静默当作 anthropic 处理，工具名与协议会
+    // 全部用错，那种"能跑但处处不对"的症状远比一条明确日志难排查。
+    if (!isProviderType(provider.type)) {
+      logger.warn(
+        { providerId: provider.id, type: provider.type },
+        '[CFG] unrecognized provider.type — provider skipped (check providers.json)',
+      )
+      continue
+    }
+
+    providers.push({
+      id: provider.id,
+      name: provider.name ?? provider.id,
+      type: provider.type,
+      baseUrl: provider.baseUrl ?? '',
+      auth: provider.auth ?? { kind: 'apiKey', value: '' },
+      models: Array.isArray(provider.models) ? normalizeModelOverrides(provider.id, provider.models) : [],
+      ...(provider.proxyUrl ? { proxyUrl: provider.proxyUrl } : {}),
+      ...(provider.headers && typeof provider.headers === 'object' && Object.keys(provider.headers).length > 0 ? { headers: provider.headers } : {}),
+    })
+  }
+
   return {
     $schemaVersion: loaded.$schemaVersion ?? DEFAULT_PROVIDERS.$schemaVersion,
-    providers: loaded.providers.map(p => ({
-      id: p.id,
-      name: p.name ?? p.id,
-      type: p.type,
-      baseUrl: p.baseUrl ?? '',
-      auth: p.auth ?? { kind: 'apiKey', value: '' },
-      models: Array.isArray(p.models) ? p.models : [],
-      ...(p.proxyUrl ? { proxyUrl: p.proxyUrl } : {}),
-      ...(p.headers && typeof p.headers === 'object' && Object.keys(p.headers).length > 0 ? { headers: p.headers } : {}),
-    })),
+    providers,
   }
 }
 

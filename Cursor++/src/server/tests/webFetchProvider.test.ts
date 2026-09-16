@@ -153,7 +153,7 @@ describe('performWebFetch with the tavily provider', () => {
 
     const { performWebFetch } = await import('../handlers/agent/web')
     // 两个原因都要出现在报错里，否则自定义 Base URL 配置错误会被误读成"Tavily 没生效"
-    await expect(performWebFetch('https://blocked.example/page')).rejects.toThrow(/Tavily fetch failed.*ECONNREFUSED.*Built-in fallback also failed.*403/)
+    await expect(performWebFetch('https://blocked.example/page')).rejects.toThrow(/Tavily extract failed.*ECONNREFUSED.*Built-in fallback also failed.*403/)
   })
 
   it('surfaces the HTTP status when the Tavily endpoint rejects the request', async () => {
@@ -219,8 +219,8 @@ describe('isValidUrl guard', () => {
 
     const { performWebFetch } = await import('../handlers/agent/web')
 
-    await expect(performWebFetch('http://127.0.0.1:8080/')).rejects.toThrow('invalid or blocked URL')
-    await expect(performWebFetch('http://10.0.0.5/')).rejects.toThrow('invalid or blocked URL')
+    await expect(performWebFetch('http://127.0.0.1:8080/')).rejects.toThrow('Invalid or blocked URL')
+    await expect(performWebFetch('http://10.0.0.5/')).rejects.toThrow('Invalid or blocked URL')
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })
