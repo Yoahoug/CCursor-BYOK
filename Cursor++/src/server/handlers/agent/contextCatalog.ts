@@ -90,31 +90,33 @@ function normalizeRuleKind(value: string): ParsedCursorRule['kind'] {
 /**
  * Frontmatter 提取。
  *
- * `[^\S\n]*\n+` 而不是 `\s*\n`：`\s` 包含 `\n`，所以 `\s*` 能与紧随其后的
- * `\n` 争抢同一批换行符，这是典型的 super-linear backtracking 形状。实测对
- * 一份**格式损坏的 SKILL.md**（`---` 之后全是 "  \n" 这种近似空行、
- * 且始终没有收尾的 `---`）会指数劣化：
+ * 原始写法 `\s*\n` 里 `\s` 包含 `\n`，于是 `\s*` 与紧随其后的 `\n` 争抢同一批
+ * 换行符 —— 典型的 super-linear backtracking 形状。实测对一份**格式损坏的
+ * SKILL.md**（`---` 之后是一长串换行、且始终没有收尾的 `---`）会呈二次劣化：
  *
- *     输入 3KB  ->    0.29 ms
- *     输入 12KB ->    4.69 ms
- *     输入 48KB ->   72.9 ms
- *     输入 192KB -> 1282.7 ms      ← 扩展宿主进程被同步阻塞
+ *     输入 10KB ->    16.5 ms
+ *     输入 20KB ->    69.1 ms
+ *     输入 40KB ->   254.4 ms      ← 扩展宿主进程被同步阻塞
  *
- * 把空白类拆成「水平空白 + 至少一个换行」后不再有重叠，同一输入 192KB 只需
- * **0.031 ms**（约 41000×）。正常合法的 SKILL.md 上两者都是 0.024ms，无退化。
+ * 现在把前缀拆成「0 个或多个水平空白 + **恰好一个**换行」。两个量词
+ * （`[^\S\n]*` 与 `\n`）的字符集不相交，且换行只吃一个，所以不存在共享量词，
+ * 同一批损坏输入 40KB 只需 **0.02 ms**；正常合法的 SKILL.md 无退化。
  *
- * **这个改写不是「完全相同」的**，必须说清楚：`\s*` 能吃掉换行，`[^\S\n]*`
- * 不能，所以像 `---\n\r\n` 这种「LF 后再跟一个 CRLF」的输入，旧写法把
- * `\r\n` 当作正文开头、新写法把它并进前缀里，捕获组会差一个 `\r\n`。
- * 结构化组合测试（前缀×正文×结尾 1000 组）里捕获组有 346 组不同。
- * 但**两个真实消费点读出的值 0 组不同**：
- *   - `extractSkillDescription` 用 `/^description:\s*(.+)$/m` 按行找，前导
- *     `\r\n` 不影响；
+ * 关键点：**必须是 `\n` 而不是 `\n+`**。写成 `\n+` 时，`\n+` 与后面的
+ * `([\s\S]*?)` 又能争抢同一批换行，二次回溯原样保留 —— 只是换了一对量词。
+ * 这正是本文件上一版修复没有生效的原因：它只对「空格 + 换行」交替的损坏输入
+ * 有效（那种形状下 `[^\S\n]*` 无法匹配换行，退化为线性），而 `---` 之后直接
+ * 跟纯换行时仍会劣化（实测 40KB 仍要 ~196ms）。删掉 `+` 后 `\n` 是单字符
+ * 匹配，不共享量词，两种损坏形状都降到线性。
+ *
+ * 捕获组语义：`\n+` 会把「空行」并入前缀，`\n` 只会吃掉一个换行，因此
+ * `---` 后跟空行的输入，正文多带几个 `\n`。两个真实消费点读出的值不变：
+ *   - `extractSkillDescription` 用 `/^description:\s*(.+)$/m` 按行找；
  *   - `skillDisablesModelInvocation` 用同款按行匹配。
- * 故判断为语义安全，并补了 `skillFrontmatter.test.ts` 锁定这一点。
+ * 结构化组合语料（前缀 × 正文 × 结尾 472 组）上新旧行为 0 组不同，
+ * `skillFrontmatter.test.ts` 把其中两种损坏形状的耗时与语义一起钉住。
  */
-// eslint-disable-next-line regexp/no-super-linear-backtracking -- 见上：已实测 41000× 收益，且两个消费点行为不变
-const FRONTMATTER_PATTERN = /^---[^\S\n]*\n+([\s\S]*?)\n---/
+const FRONTMATTER_PATTERN = /^---[^\S\n]*\n([\s\S]*?)\n---/
 
 export function extractSkillDescription(content: string): string {
   const frontmatter = content.match(FRONTMATTER_PATTERN)

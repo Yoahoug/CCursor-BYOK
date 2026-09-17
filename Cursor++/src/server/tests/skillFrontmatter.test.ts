@@ -4,11 +4,14 @@ import { categorizeCursorRules, normalizeAgentSkill } from '../handlers/agent/co
 /**
  * 锁定 FRONTMATTER_PATTERN 的语义边界。
  *
- * 这条正则从 `/^---\s*\n(...)/` 改成 `/^---[^\S\n]*\n+(...)/` 是为了消灭
- * super-linear backtracking（192KB 损坏输入 1282ms → 0.031ms）。改写不是
- * 逐字节等价的：`\s*` 能吃掉换行而 `[^\S\n]*` 不能，所以 `---\n\r\n` 这类
- * "LF 后再跟 CRLF" 的输入，捕获组会多带一个 `\r\n`。下面用两个**真实消费点**
- * 的可观察行为把这个差异钉住，避免将来有人以为可以随手再改。
+ * 这条正则从 `/^---\s*\n(...)/` 改成 `/^---[^\S\n]*\n(...)/` 是为了消灭
+ * super-linear backtracking（30KB 损坏输入 254ms → 0.03ms）。改写不是
+ * 逐字节等价的：`\s*` 能吃掉换行而 `[^\S\n]*` 不能，所以前缀后面跟着空行时，
+ * 捕获组会多带几个 `\n`。下面用两个**真实消费点**的可观察行为把这个差异钉住，
+ * 避免将来有人以为可以随手再改。
+ *
+ * 注意前缀里的换行必须是单个 `\n`，不能是 `\n+`：写成 `\n+` 时它会与后面的
+ * `([\s\S]*?)` 争抢换行，二次回溯会原样保留（详见 contextCatalog 的注释）。
  */
 
 function skillFile(content: string, fullPath = '/workspace/.cursor/skills/demo/SKILL.md') {
@@ -114,6 +117,31 @@ describe('frontmatter 提取的健壮性', () => {
     descriptionOfSkill(damaged)
     const elapsedMs = performance.now() - startedAt
     expect(elapsedMs).toBeLessThan(1000)
+  })
+
+  it('does not hang on a damaged frontmatter made of plain newlines', () => {
+    // 这是上一版修复漏掉的形状：前缀写成 `\n+` 时，`\n+` 与后面的
+    // `([\s\S]*?)` 仍会争抢同一批换行，二次回溯原样保留。必须与上面那条
+    // 「空格 + 换行」的用例成对存在 —— 单测「空格 + 换行」无法发现这个洞。
+    const damaged = `---${'\n'.repeat(120_000)}`
+    const startedAt = performance.now()
+    descriptionOfSkill(damaged)
+    const elapsedMs = performance.now() - startedAt
+    expect(elapsedMs).toBeLessThan(1000)
+  })
+
+  it('does not hang on a damaged frontmatter of plain newlines with a trailing body', () => {
+    const damaged = `---${'\n'.repeat(120_000)}body text`
+    const startedAt = performance.now()
+    expect(descriptionOfSkill(damaged)).toBe(damaged.trim().slice(0, 120))
+    expect(performance.now() - startedAt).toBeLessThan(1000)
+  })
+
+  it('still reads a description that appears after blank lines inside the fence', () => {
+    // 锁定 `\n+` → `\n` 这一步的捕获组语义变化：正文多带几个换行，
+    // 但两个消费点按行匹配，读出的值必须不变。
+    expect(descriptionOfSkill('---\n\n\n\ndescription: After blanks\n---\n')).toBe('After blanks')
+    expect(descriptionOfSkill('---\r\n\r\ndescription: After CRLF blanks\r\n---\r\n')).toBe('After CRLF blanks')
   })
 
   it('handles a very long but valid description without slowing down', () => {
