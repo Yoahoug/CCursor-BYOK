@@ -5,8 +5,11 @@
 > 门禁：`tsc --noEmit` / `eslint src` / `vitest run`（需 `CURSOR_APP_ROOT`）
 >
 > **终态**：TSC 0 error；`CI=true pnpm run lint` 0 error 0 warning（**全量规则集**）；
-> `503 passed / 11 skipped`（49 个测试文件）。
+> `506 passed / 11 skipped`（49 个测试文件）。
 > 每个提交前都重跑，无中间破态。
+>
+> **复查补记**：本报告由后续一次独立复查核对，结论与数字基本一致，发现并修正了
+> 一处「修复不彻底」的正则问题（见「三」的 A2′ 更正与提交 `87de8a3`）。
 
 ## 一、审查范围与方法
 
@@ -203,8 +206,17 @@
 | `countTokens` 对同一段 200KB 文本重复调用 | 20.536 ms | **0.000 ms** | **命中缓存后 ≈0** |
 | `buildContextBreakdown`（44KB system + 长 preamble + 120 条历史 + 齐全工具表），**首轮冷启动** | 13.77 ms | 18.294 ms | 见下方说明 |
 | `buildContextBreakdown`，**同一会话的后续轮次（稳态）** | — | **0.547 ms** | **比冷启动快 97%**，这是用户实际感受到的那条路径 |
-| frontmatter 正则在 192KB 损坏 SKILL.md 上 | 1282.7 ms | **0.031 ms** | **≈41000×**（见 A2′） |
+| frontmatter 正则在 40KB 损坏 SKILL.md 上（纯换行） | 254.4 ms | **0.02 ms** | 见 A2′ |
+| frontmatter 正则在 192KB 损坏 SKILL.md 上（空格 + 换行） | 1282.7 ms | **0.031 ms** | **≈41000×**，见 A2′ |
 | frontmatter 正则在 192KB 合法 SKILL.md 上 | 0.024 ms | 0.024 ms | 无退化 |
+
+> **A2′ 更正（复查补记）**：f0aeed0 的第一版改写（`\s*\n` → `[^\S\n]*\n+`）**没有
+> 真正消除回溯** —— `\n+` 仍与后面的 `([\s\S]*?)` 共享换行，只是换了一对量词。
+> 它之所以看起来有效，是因为 benchmark 只用了「空格 + 换行」交替的损坏输入，
+> 那种形状下 `[^\S\n]*` 匹配不到换行、退化为线性。`---` 之后直接跟纯换行时
+> 依旧二次劣化（40KB 需 254ms，与改写前同量级）。
+> 复查提交 `87de8a3` 把 `\n+` 收紧为单个 `\n`，两类损坏形状才都降到线性，
+> 并补了会真正失败的成对回归测试。
 
 `buildContextBreakdown` 的收益来源：它对 **system prompt、每个工具 schema、
 preamble 的每个 XML 段** 分别调 `countTokens`，而其中 system prompt 与工具 schema
@@ -306,7 +318,7 @@ git diff --shortstat main..HEAD~1     # 代码侧改动量
 | # | 原来 | 现在 | 为什么更好 |
 |---|---|---|---|
 | 1 | `isValidUrl` 放行 `http://[::1]:8080/`、`http://[::ffff:127.0.0.1]/`、`http://[fd00::1]/`、`http://[fe80::1]/`、`http://localhost./`、`http://0x7f000001/` 等指向本机/内网的目标 | 全部**拒绝** | WebFetch 是本机扩展发起的请求，放行这些等于给 LLM 一条打本机服务的路。**注意**：这是本次唯一一处「收紧」，如果你本来就有依赖 `localhost.` 或 `0x7f000001` 形式抓本机页面的用法，会受影响（正常写 `http://localhost:3000/` 不受影响，仍然放行） |
-| 2 | `skillDisablesModelInvocation` / `extractSkillDescription` 用 `/^---\s*\n(...)/` | 改用 `[^\S\n]*\n+` 版本 | 192KB 损坏输入从 1282ms 降到 0.031ms。**捕获组语义有差**（`---\n\r\n` 这类混合换行会多带一个 `\r\n`），但两个消费点读出的值不变，已用 1000 组组合测试与 `skillFrontmatter.test.ts` 锁定 |
+| 2 | `skillDisablesModelInvocation` / `extractSkillDescription` 用 `/^---\s*\n(...)/` | 改用 `[^\S\n]*\n(...)` 版本 | 40KB 纯换行损坏输入从 254ms 降到 0.02ms；192KB「空格 + 换行」输入从 1282ms 降到 0.031ms。**捕获组语义有差**（`---` 后的空行不再并入前缀），但两个消费点读出的值不变，已用 472 组组合语料与 `skillFrontmatter.test.ts` 锁定。**注意**：中间版本曾写成 `[^\S\n]*\n+`，那没有真正消除回溯，见「三」的 A2′ 更正 |
 | 3 | `waitForPromiseWithHeartbeat` 用 `while (!settled)` | 用 `for (;;)` + 显式 `if (settled) break` | 语义完全一致；改的只是「读起来像死循环」这个形状。**不构成行为变更**，列出仅为完整性 |
 | 4 | `blobStore` 的内存 blob Map 无上限（`cleanupBlobCache` 零调用点） | 超过 10000 条时触发一次 `cleanupBlobCache` | 长时间会话下内存不再单调增长。卸载逻辑本就存在，只是从未被调用 |
 | 5 | `conversationRuntime` 在 blob 解码失败时静默跳过 | 仍然跳过，但落一条 `logger.warn`（含 `undecodableBlobs` 计数） | 控制流不变；「上下文莫名变短」现在有日志可查 |
@@ -353,12 +365,13 @@ git show 6aed3e9 -- Cursor++/src/server/handlers/agent/web.ts
 hostname，结果把 `http://10.example.com/` 也拦了（那是个合法公网域名）。**如果只
 复核一个文件，就复核这个**：它是安全相关的，且我改错过一次。
 
-### 2. `contextCatalog.ts` 的 frontmatter 正则（`f0aeed0`）—— 收益最大，但有语义差
+### 2. `contextCatalog.ts` 的 frontmatter 正则（`f0aeed0` + 复查修正 `87de8a3`）
 
-贡献了 41000× 的收益，但**不是逐字节等价**。看注释里那句「这个改写不是「完全相同」的」，
-以及 `skillFrontmatter.test.ts` 里 `still reads the description for a mixed LF-then-CRLF fence`
-这条测试 —— 它专门锁住唯一有差异的形状。如果你认为「SKILL.md 里出现 `---\n\r\n`」
-必须保持旧行为，那这条改动要回退（代价是 1282ms 的同步阻塞回来）。
+复查时发现 f0aeed0 的改写**没有真正消除回溯**（`\n+` 与 `([\s\S]*?)` 仍共享换行），
+只对「空格 + 换行」形状有效；`87de8a3` 把 `\n+` 收紧为单个 `\n` 才算修完，并补了
+会真正失败的成对回归测试。看注释里那段「为什么必须是 `\n` 而不是 `\n+`」，以及
+`skillFrontmatter.test.ts` 里成对的两条健壮性用例 —— 只留「空格 + 换行」那一条
+是测不出这个洞的。含义是：**以后任何前缀/量词的改动，两类损坏形状都要各测一次**。
 
 ### 3. `editStreamExtractor.ts` 的 `PATCH_FILE_HEADER_PATTERN`（`2686ec9`）—— 撤回的改动
 
