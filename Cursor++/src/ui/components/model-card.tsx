@@ -48,8 +48,30 @@ const QS_LEVELS_GEMINI = THINKING_LEVELS_GEMINI.map(level => level.value)
  */
 export function ModelCard() {
   return (
-    <div class="model-item" x-data="{ me: {} }" x-effect="me = $store.app.getModelErrors(p.id, m.id)">
+    <div
+      class="model-item"
+      x-data="{ me: {} }"
+      x-effect="me = $store.app.getModelErrors(p.id, m.id)"
+      x-bind:class="{
+        'model-dragging': $store.app.modelDragId === m.id,
+        'model-drop-top': $store.app.modelDropEdge(m.id) === 'top',
+        'model-drop-bottom': $store.app.modelDropEdge(m.id) === 'bottom',
+      }"
+      {...{ 'x-on:dragover.prevent': '$store.app.hoverModelDuringDrag(m.id, $event)' }}
+      {...{ 'x-on:drop.prevent': '$store.app.dropModel(p.id, m.id)' }}
+    >
       <div class="model-head" x-on:click="$store.app.toggleModelExpand(p.id, m.id)">
+        {/* 拖动握把。单独一个手势区而不是让整条头部可拖，否则想展开时手一抖就变成排序。
+            stop 掉 click，避免松开鼠标时顺带把卡片折叠了 */}
+        <span
+          class="model-drag-handle"
+          draggable="true"
+          title="Drag to reorder — this order is what Cursor's model picker uses"
+          {...{ 'x-on:dragstart': '$store.app.beginModelDrag(m.id)' }}
+          {...{ 'x-on:dragend': '$store.app.endModelDrag()' }}
+          {...{ 'x-on:click.stop': '' }}
+        >
+        </span>
         <span class="acc-caret" x-text="$store.app.modelExpanded[p.id]?.[m.id] ? '▼' : '▶'"></span>
         <span class="model-title" x-text="m.displayName || m.apiModel || m.id || '(unnamed model)'"></span>
         {/* 测试结果徽标 —— 未测试时不渲染, 保持列表干净; 点击即重测或取消 */}

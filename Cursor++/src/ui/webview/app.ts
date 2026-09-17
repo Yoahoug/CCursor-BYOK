@@ -11,6 +11,7 @@ import type { ProtocolFamily, ProtocolFamilyOption } from '../../shared/provider
 import type { RemoteModelEntry } from '../../shared/remoteModels'
 import type { UsageSummary } from '../../shared/usageTypes'
 import { isProviderType } from '../../server/data/defaults'
+import { reorderById } from '../../shared/listReorder'
 import {
   buildRequestUrlPreview,
   checkBaseUrlShape,
@@ -42,6 +43,14 @@ export function initApp(Alpine: AlpineType) {
     expanded: {} as Record<string, boolean>,
     modelExpanded: {} as Record<string, Record<string, boolean>>,
     headersInvalid: {} as Record<string, boolean>,
+
+    // ── 模型拖动排序 ──
+    // 拖动过程中只记录"谁在拖、拖到谁、插在前面还是后面"，真正的数组改动等 drop 时一次做完。
+    // 这样拖动全程不碰 drafts，不会因为中途重排导致鼠标下的元素位置跳动。
+    modelDragId: '' as string,
+    modelDragOverId: '' as string,
+    modelDragAfter: false,
+
     remoteModels: {} as Record<string, { loading: boolean, models?: RemoteModelEntry[], error?: string }>,
     saveSnapshots: {} as Record<string, { targetIds: string[], snapshots: Record<string, any> }>,
     savingProviders: {} as Record<string, boolean>,
@@ -1205,6 +1214,69 @@ export function initApp(Alpine: AlpineType) {
       d.models = (d.models || []).filter((x: any) => x.id !== mid)
       if (this.modelExpanded[pid])
         delete this.modelExpanded[pid][mid]
+    },
+
+    // ── 模型拖动排序 ──
+    //
+    // 顺序是有意义的：Cursor 的模型选择器按 providers.json 里 models 数组的顺序渲染
+    // （见 server/config/providersStore.ts 的 flattenModels），用户把常用模型拖到前面
+    // 就能少滚动。所以这里改的是真实的数组顺序，会和其它字段一样进 draft 走 dirty → 保存流程。
+
+    beginModelDrag(mid: string) {
+      this.modelDragId = mid
+      this.modelDragOverId = ''
+      this.modelDragAfter = false
+    },
+
+    /**
+     * 指针走到某个模型卡片上 —— 以上下半区决定插在它前面还是后面。
+     *
+     * 用卡片中线而不是鼠标移动方向，是因为"往上拖但还没越过中线"时，
+     * 按方向判断会让插入位置提前跳变，看起来比实际更靠前。
+     */
+    hoverModelDuringDrag(mid: string, event: DragEvent) {
+      if (!this.modelDragId || this.modelDragId === mid)
+        return
+      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+      if (!rect) {
+        this.modelDragOverId = mid
+        this.modelDragAfter = false
+        return
+      }
+      const midpoint = rect.top + rect.height / 2
+      this.modelDragOverId = mid
+      this.modelDragAfter = event.clientY > midpoint
+    },
+
+    endModelDrag() {
+      this.modelDragId = ''
+      this.modelDragOverId = ''
+      this.modelDragAfter = false
+    },
+
+    /** 模板里判断插入线画在卡片上沿还是下沿 */
+    modelDropEdge(mid: string): 'top' | 'bottom' | '' {
+      if (!this.modelDragId || this.modelDragOverId !== mid)
+        return ''
+      if (this.modelDragId === mid)
+        return ''
+      return this.modelDragAfter ? 'bottom' : 'top'
+    },
+
+    dropModel(pid: string, targetId: string) {
+      const draggedId = this.modelDragId
+      const placeAfter = this.modelDragAfter
+      this.endModelDrag()
+      if (!draggedId || draggedId === targetId)
+        return
+
+      const d = this.ensureDraft(pid)
+      const models = d.models || []
+      const next = reorderById(models, draggedId, targetId, placeAfter)
+      // 顺序没变就别动数组 —— 赋值会替换引用，白白触发一次全列表重渲染
+      if (next.every((m: any, i: number) => m === models[i]))
+        return
+      d.models = next
     },
 
     // ── QuickSwitch auto-link ──

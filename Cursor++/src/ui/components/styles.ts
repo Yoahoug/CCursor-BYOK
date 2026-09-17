@@ -642,12 +642,55 @@ export const styles = /* css */ `
   .models-header-actions { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 
   .model-item {
+    position: relative;
     border: 1px solid var(--cpp-border);
     border-radius: var(--cpp-radius-sm);
     margin-bottom: 5px;
     background: var(--cpp-surface-2);
     overflow: hidden;
   }
+
+  /* ── 拖动排序 ──
+     插入位置用伪元素画线，不用 border：改 border 会让卡片高度变化，
+     鼠标一移动整个列表就跟着抖，很难把卡片放到想要的位置。 */
+  .model-item.model-drop-top::before,
+  .model-item.model-drop-bottom::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--cpp-accent);
+    pointer-events: none;
+    z-index: 2;
+  }
+  .model-item.model-drop-top::before { top: 0; }
+  .model-item.model-drop-bottom::after { bottom: 0; }
+
+  /* 被拖走的卡片留一个"空位"提示。不用 display:none —— 那会让下方卡片
+     立刻补位，用户就丢失了"我从哪里拖出来"的参照 */
+  .model-item.model-dragging {
+    opacity: 0.4;
+    border-style: dashed;
+  }
+
+  /* 握把：两列圆点。不依赖图标字体 —— codicon 里没有 gripper 类图标，
+     而且这个面板只内联了一个 @font-face，取不到图标就会显示成空白方块 */
+  .model-drag-handle {
+    flex: 0 0 auto;
+    width: 9px;
+    height: 14px;
+    margin-right: -1px;
+    cursor: grab;
+    background-image: radial-gradient(circle, var(--cpp-text-faint) 1px, transparent 1.2px);
+    background-size: 4px 4px;
+    background-position: 1px 2px;
+    background-repeat: repeat;
+    opacity: 0.75;
+  }
+  .model-drag-handle:hover { opacity: 1; }
+  .model-drag-handle:active { cursor: grabbing; }
+
   .model-head { display: flex; align-items: center; gap: 7px; padding: 6px 8px; cursor: pointer; user-select: none; font-size: 11px; }
   .model-head:hover { background: var(--cpp-surface-3); }
   .model-body { padding: 4px 10px 10px; border-top: 1px solid var(--cpp-border); background: var(--cpp-surface); }
