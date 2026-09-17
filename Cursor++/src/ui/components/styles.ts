@@ -66,10 +66,47 @@ export const styles = /* css */ `
        浮层改用 editorWidget 背景作基底（主题里本来就是给下拉/悬浮件的那个颜色），
        再叠背景模糊：半透明、能透出环境色，但底下的内容被虚化到不影响阅读。
        这就是 macOS 那种毛玻璃的观感，同时不引入任何写死的色值。 */
-    --cpp-glass-bg: color-mix(in srgb, var(--vscode-editorWidget-background, var(--vscode-editor-background, #ffffff)) 86%, transparent);
+    --cpp-glass-bg: color-mix(in srgb, var(--cpp-editor-widget-bg) 86%, transparent);
     --cpp-glass-blur: saturate(180%) blur(20px);
     --cpp-glass-border: color-mix(in srgb, var(--cpp-ink) 20%, transparent);
     --cpp-glass-shadow: 0 12px 32px color-mix(in srgb, var(--cpp-ink) 30%, transparent), 0 2px 8px color-mix(in srgb, var(--cpp-ink) 16%, transparent);
+
+    /* ── 宿主悬浮件底色 ──
+       editorHoverWidget.* / editorWidget.* 这几个颜色 VS Code 是**有值**的，但值来自
+       色彩注册表的默认项（editorHoverWidget.background 默认 = editorWidget.background，
+       border 默认 = editorWidget.border），而不是主题 JSON。主题文件里查不到它们，
+       直接 var(--vscode-editorHoverWidget-background) 会落回下面的兜底 —— 于是浮层
+       变成半透明。这里按注册表的继承关系写全兜底链，让取值与真实宿主一致。
+
+       兜底的深浅色值取自 workbench 的注册表默认（editorWidget.background 深 #252526 /
+       浅 #F3F3F3，border 深 #454545 / 浅 #C8C8C8）。各变量内部先试主题值，
+       再退到这一层。 */
+    --cpp-editor-widget-bg: var(
+      --vscode-editorWidget-background,
+      var(--vscode-editor-background, #252526)
+    );
+    --cpp-editor-widget-border: var(
+      --vscode-editorWidget-border,
+      color-mix(in srgb, var(--cpp-ink) 26%, transparent)
+    );
+    --cpp-hover-bg: var(--vscode-editorHoverWidget-background, var(--cpp-editor-widget-bg));
+    --cpp-hover-border: var(--vscode-editorHoverWidget-border, var(--cpp-editor-widget-border));
+    --cpp-hover-fg: var(--vscode-editorHoverWidget-foreground, var(--cpp-text));
+
+    /* ── 弹窗材质 ──
+       弹窗盖在**已有内容**之上，这里的透明是有害的：底下表单的文字会透上来和
+       弹窗自己的文字叠在一起，两层字互相干扰，谁都读不清 —— 观感上就是"脏"。
+
+       glass 那套（86% + 模糊）是给下拉这种贴着触发器的小浮层用的，弹窗用它会
+       留下一层灰蒙蒙的鬼影，所以弹窗直接用不透明的控件底色：主题里
+       editorWidget.background 本来就是给这类浮层的颜色，两边主题都成立。
+
+       阴影用黑而不是 --cpp-ink（前景色）：深色主题下 ink 接近白色，
+       拿它做阴影会变成一圈发白的光晕，浮不起来。 */
+    --cpp-modal-bg: var(--cpp-editor-widget-bg);
+    --cpp-modal-border: var(--cpp-editor-widget-border);
+    --cpp-modal-scrim: color-mix(in srgb, #000 58%, transparent);
+    --cpp-modal-shadow: 0 16px 40px rgba(0, 0, 0, 0.42), 0 3px 10px rgba(0, 0, 0, 0.26);
     --cpp-mono: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace);
     --cpp-font: var(--vscode-font-family, -apple-system, "Segoe UI", system-ui, sans-serif);
     --cpp-fs: 12px;
@@ -996,26 +1033,37 @@ export const styles = /* css */ `
   @keyframes toast-out { from { opacity: 1; } to { opacity: 0; transform: translateY(8px); } }
 
   /* ── 弹窗 ─────────────────────────────────────────────── */
+  /*
+    遮罩用纯黑压暗，而不是叠 --cpp-ink：ink 是前景色，深色主题下接近白，
+    拿它当遮罩等于给背景打上一层白雾，越"模糊"越糊。
+    遮罩上不加 backdrop-filter —— 底下已经压到 42% 亮度，再模糊只会让
+    弹窗边缘糊成一片，反而显得脏。
+  */
   .modal-backdrop {
     position: fixed;
     inset: 0;
     z-index: 100;
-    background: rgba(16, 24, 40, 0.45);
+    background: var(--cpp-modal-scrim);
     display: flex;
     align-items: center;
     justify-content: center;
-    backdrop-filter: blur(3px);
     padding: 16px;
   }
+  /*
+    弹窗本体必须不透明：它盖在表单上面，半透明会让底下的字段名透上来和
+    弹窗文字叠成两层，读不清也显得脏。这里用主题的控件底色（见令牌注释）。
+  */
   .modal-dialog {
-    background: var(--cpp-surface);
-    border: 1px solid var(--cpp-border-strong);
+    background: var(--cpp-modal-bg);
+    border: 1px solid var(--cpp-modal-border);
     border-radius: var(--cpp-radius);
     width: 100%;
     max-width: 440px;
     max-height: 85vh;
     overflow: visible;
-    box-shadow: var(--cpp-shadow-lg);
+    box-shadow: var(--cpp-modal-shadow);
+    /* 不透明底 + 圆角：内容滚动时不会从圆角外溢出 */
+    isolation: isolate;
   }
   .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid var(--cpp-border); }
   .modal-title { font-size: 13px; font-weight: 700; }
@@ -1271,9 +1319,14 @@ export const styles = /* css */ `
     min-width: 140px;
     padding: 6px 8px;
     border-radius: var(--cpp-radius-sm);
-    background: var(--vscode-editorHoverWidget-background, var(--cpp-surface-2));
-    border: 1px solid var(--vscode-editorHoverWidget-border, var(--cpp-border-strong));
-    color: var(--vscode-editorHoverWidget-foreground, var(--cpp-text));
+    /*
+      底色必须不透明 —— 这是浮在图表/指标卡之上的读数面板，用 surface（4~11% 墨水）
+      当底会直接把底下的数字透上来叠字。走 --cpp-hover-* 那条链：优先取宿主的
+      editorHoverWidget 色，取不到就退到 editorWidget（控件底色），两者都是实色。
+    */
+    background: var(--cpp-hover-bg);
+    border: 1px solid var(--cpp-hover-border);
+    color: var(--cpp-hover-fg);
     box-shadow: var(--cpp-shadow-lg);
     font-size: 10px;
     line-height: 1.5;
