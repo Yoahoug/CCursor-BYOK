@@ -14,14 +14,14 @@
  * 参考: Codex CLI (codex-rs/core/src/client.rs) 的 HTTP/SSE 路径
  */
 import type { ResponseCreateParamsStreaming } from 'openai/resources/responses/responses'
-import OpenAI from 'openai'
 import type { ProviderEntry } from '../../data/defaults'
+import type { LLMProvider, LLMStreamEvent, LLMStreamRequest } from './types'
+import OpenAI from 'openai'
 import { logger } from '../../logger'
 import { encodeResponsesInput, encodeResponsesTools } from './conversationCodec'
 import { createProxiedFetch } from './proxyFetch'
 import { createTransformDiagnostics, hasTransformMutations, transformMessages } from './transformMessages'
 import { buildDefaultHeaders } from './userAgent'
-import type { LLMProvider, LLMStreamEvent, LLMStreamRequest } from './types'
 
 export class OpenAIResponsesProvider implements LLMProvider {
   readonly name = 'openai-responses'
@@ -42,7 +42,7 @@ export class OpenAIResponsesProvider implements LLMProvider {
     this.client = new OpenAI(opts)
   }
 
-  async *stream(request: LLMStreamRequest): AsyncIterable<LLMStreamEvent> {
+  async* stream(request: LLMStreamRequest): AsyncIterable<LLMStreamEvent> {
     const diagnostics = createTransformDiagnostics('openai-responses', request.messages.length)
     const transformed = transformMessages(request.messages, 'openai-responses', diagnostics, request.model)
     if (hasTransformMutations(diagnostics)) {

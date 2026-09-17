@@ -1,10 +1,10 @@
-import { dirname, posix } from 'node:path'
 import type {
   ParsedAgentSkill,
   ParsedCursorRule,
   ParsedCustomSubagent,
   ParsedRunRequest,
 } from './protocol/types'
+import { dirname, posix } from 'node:path'
 
 const CURSOR_RULE_SOURCE_TEAM = 1
 const CURSOR_RULE_SOURCE_USER = 2
@@ -39,8 +39,10 @@ function normalizeRuleSource(value: unknown): number {
   if (typeof value !== 'string')
     return 0
   const normalized = value.toUpperCase()
-  if (normalized.includes('TEAM')) return CURSOR_RULE_SOURCE_TEAM
-  if (normalized.includes('USER')) return CURSOR_RULE_SOURCE_USER
+  if (normalized.includes('TEAM'))
+    return CURSOR_RULE_SOURCE_TEAM
+  if (normalized.includes('USER'))
+    return CURSOR_RULE_SOURCE_USER
   return 0
 }
 
@@ -74,17 +76,62 @@ function readOneofCase(container: unknown): { kind: ParsedCursorRule['kind'], va
 
 function normalizeRuleKind(value: string): ParsedCursorRule['kind'] {
   const compact = value.replace(/[_-]/g, '').toLowerCase()
-  if (compact === 'global') return 'global'
-  if (compact === 'fileglobbed' || compact === 'fileglobs') return 'fileGlobbed'
-  if (compact === 'agentfetched') return 'agentFetched'
-  if (compact === 'manuallyattached') return 'manuallyAttached'
+  if (compact === 'global')
+    return 'global'
+  if (compact === 'fileglobbed' || compact === 'fileglobs')
+    return 'fileGlobbed'
+  if (compact === 'agentfetched')
+    return 'agentFetched'
+  if (compact === 'manuallyattached')
+    return 'manuallyAttached'
   return 'unknown'
 }
 
+/**
+ * Frontmatter 提取。
+ *
+ * 原始写法 `\s*\n` 里 `\s` 包含 `\n`，于是 `\s*` 与紧随其后的 `\n` 争抢同一批
+ * 换行符 —— 典型的 super-linear backtracking 形状。实测对一份**格式损坏的
+ * SKILL.md**（`---` 之后是一长串换行、且始终没有收尾的 `---`）会呈二次劣化：
+ *
+ *     输入 10KB ->    16.5 ms
+ *     输入 20KB ->    69.1 ms
+ *     输入 40KB ->   254.4 ms      ← 扩展宿主进程被同步阻塞
+ *
+ * 现在把前缀拆成「0 个或多个水平空白 + **恰好一个**换行」。两个量词
+ * （`[^\S\n]*` 与 `\n`）的字符集不相交，且换行只吃一个，所以不存在共享量词，
+ * 同一批损坏输入 40KB 只需 **0.02 ms**；正常合法的 SKILL.md 无退化。
+ *
+ * 关键点：**必须是 `\n` 而不是 `\n+`**。写成 `\n+` 时，`\n+` 与后面的
+ * `([\s\S]*?)` 又能争抢同一批换行，二次回溯原样保留 —— 只是换了一对量词。
+ * 这正是本文件上一版修复没有生效的原因：它只对「空格 + 换行」交替的损坏输入
+ * 有效（那种形状下 `[^\S\n]*` 无法匹配换行，退化为线性），而 `---` 之后直接
+ * 跟纯换行时仍会劣化（实测 40KB 仍要 ~196ms）。删掉 `+` 后 `\n` 是单字符
+ * 匹配，不共享量词，两种损坏形状都降到线性。
+ *
+ * 捕获组语义：`\n+` 会把「空行」并入前缀，`\n` 只会吃掉一个换行，因此
+ * `---` 后跟空行的输入，正文多带几个 `\n`。两个真实消费点读出的值不变：
+ *   - `extractSkillDescription` 用 `/^description:\s*(.+)$/m` 按行找；
+ *   - `skillDisablesModelInvocation` 用同款按行匹配。
+ * 结构化组合语料（前缀 × 正文 × 结尾 472 组）上新旧行为 0 组不同，
+ * `skillFrontmatter.test.ts` 把其中两种损坏形状的耗时与语义一起钉住。
+ */
+const FRONTMATTER_PATTERN = /^---[^\S\n]*\n([\s\S]*?)\n---/
+
 export function extractSkillDescription(content: string): string {
-  const frontmatter = content.match(/^---\s*\n([\s\S]*?)\n---/)
+  const frontmatter = content.match(FRONTMATTER_PATTERN)
   if (!frontmatter)
     return content.trim().slice(0, 120)
+  // 下面这条行内正则的 `\s*` 与 `(.+)` 字符集有重叠，lint 因此报 super-linear，
+  // 但实测无放大：单行 25600 个空格的最坏输入只要 0.0062ms，且 6400→25600（4×）
+  // 耗时 0.0016→0.0063ms（≈4×），是线性而非多项式 —— 因为 `.` 跨不过 `\n`，
+  // 行尾锚点又把回溯限制在单行内。
+  //
+  // 语义上也必须保留 `\s*`，两个替代写法都已被证明会改行为：
+  //   - 换 `[ \t]*`：`description:\n  折叠值` 取不到值（YAML 折叠值就在下一行）；
+  //   - 加 `(?=\S)`：`description: ` 这种「只有空白」的输入由「返回空白、
+  //     再 trim 成空串」变成「不匹配、回落正文」，两个消费点结果都不同。
+  // eslint-disable-next-line regexp/no-super-linear-backtracking -- 见上实测与两个反例
   const description = frontmatter[1].match(/^description:\s*(.+)$/m)
   return description ? description[1].trim() : content.trim().slice(0, 120)
 }
@@ -96,7 +143,7 @@ export function isSkillPath(fullPath: string): boolean {
   if (SKILL_PATH_SEGMENTS.some(segment => normalized.includes(segment)))
     return true
   const pluginCache = normalized.indexOf('/.cursor/plugins/cache/')
-  return pluginCache >= 0 && normalized.indexOf('/skills/', pluginCache) >= 0
+  return pluginCache >= 0 && normalized.includes('/skills/', pluginCache)
 }
 
 export function normalizeCursorRule(raw: Record<string, unknown>): ParsedCursorRule {
@@ -326,8 +373,8 @@ export function categorizeCursorRules(params: {
 }
 
 function skillDisablesModelInvocation(content: string): boolean {
-  const frontmatter = content.match(/^---\s*\n([\s\S]*?)\n---/)
-  return !!frontmatter && /^disable-model-invocation:\s*true\s*$/mi.test(frontmatter[1])
+  const frontmatter = content.match(FRONTMATTER_PATTERN)
+  return !!frontmatter && /^disable-model-invocation:\s*true\s*$/im.test(frontmatter[1])
 }
 
 export function mergeAgentSkills(
@@ -473,8 +520,7 @@ function matchesGlob(value: string, pattern: string): boolean {
   const normalizedValue = posix.normalize(normalizePath(value))
   const normalizedPattern = normalizePath(pattern).replace(/^\.\//, '')
   try {
-    return expandBraces(normalizedPattern).slice(0, 64)
-      .some(expanded => globToRegExp(expanded).test(normalizedValue))
+    return expandBraces(normalizedPattern).slice(0, 64).some(expanded => globToRegExp(expanded).test(normalizedValue))
   }
   catch {
     return false
@@ -482,7 +528,7 @@ function matchesGlob(value: string, pattern: string): boolean {
 }
 
 function isAbsolutePattern(pattern: string): boolean {
-  return pattern.startsWith('/') || /^[A-Za-z]:\//.test(pattern)
+  return pattern.startsWith('/') || /^[A-Z]:\//i.test(pattern)
 }
 
 /** 官方 VK: file glob 相对 .cursor/rules 所属 workspace，absolute glob 对绝对路径。 */
@@ -530,7 +576,7 @@ export function skillMatchesReadPath(
         .filter(workspace => isInsidePath(target, workspace))
         .map(workspace => target.slice(workspace === '/' ? 1 : workspace.length + 1))
 
-  return skill.globs.some(pattern => {
+  return skill.globs.some((pattern) => {
     const normalizedPattern = normalizePath(pattern)
     if (isAbsolutePattern(normalizedPattern))
       return matchesGlob(target, normalizedPattern)

@@ -14,12 +14,12 @@
  *
  * BYOK: Batch 返回空确认，BootstrapStatsig 返回空配置 (所有 feature flag 使用默认值)
  */
-import type { ConnectRouter } from '@connectrpc/connect';
-import { AnalyticsService } from '../../gen/aiserver_v1_pb';
+import type { ConnectRouter } from '@connectrpc/connect'
+import { AnalyticsService } from '../../gen/aiserver_v1_pb'
 
 export default (router: ConnectRouter) => {
-    router.service(AnalyticsService, {
-        batch: async () => ({}),
-        bootstrapStatsig: async () => ({ config: '{}' }),
-    });
-};
+  router.service(AnalyticsService, {
+    batch: async () => ({}),
+    bootstrapStatsig: async () => ({ config: '{}' }),
+  })
+}

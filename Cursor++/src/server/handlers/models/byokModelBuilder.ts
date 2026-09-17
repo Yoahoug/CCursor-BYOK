@@ -8,12 +8,11 @@
  *   - 有 parameters 配置时生成 parameterDefinitions + 笛卡尔积 variants (Edit 面板)
  *   - 无 parameters 时单 variant (向后兼容,无 Edit 按钮)
  */
-import type { ProviderEntry, ProviderModel, ProviderType, ThinkingLevel } from '../../data/defaults'
+import type { ProviderEntry, ProviderModel, ProviderType } from '../../data/defaults'
 import type { RequestedModel_ModelParameterValue } from '../../gen/agent_v1_pb'
 import type {
   AvailableModelsResponse_AvailableModel,
   ModelParameterDefinition,
-  ModelParameterDefinition_ModelParameterType,
 } from '../../gen/aiserver_v1_pb'
 import { create } from '@bufbuild/protobuf'
 import { flattenModels } from '../../config/providersStore'
@@ -24,12 +23,12 @@ import {
   AvailableModelsResponse_DegradationStatus,
   AvailableModelsResponse_ModelVariantConfigSchema,
   AvailableModelsResponse_TooltipDataSchema,
-  ModelParameterDefinitionSchema,
-  ModelParameterDefinition_BooleanParameterDefinitionSchema,
   ModelParameterDefinition_BooleanParameterDefinition_BooleanParameterValueSchema,
-  ModelParameterDefinition_EnumParameterDefinitionSchema,
+  ModelParameterDefinition_BooleanParameterDefinitionSchema,
   ModelParameterDefinition_EnumParameterDefinition_EnumParameterValueSchema,
+  ModelParameterDefinition_EnumParameterDefinitionSchema,
   ModelParameterDefinition_ModelParameterTypeSchema,
+  ModelParameterDefinitionSchema,
 } from '../../gen/aiserver_v1_pb'
 
 const VARIANT_SUFFIX_STYLE = 'color: var(--cursor-text-tertiary); font-size: 0.85em;'
@@ -108,7 +107,7 @@ function makeBoolParamDef(id: string, name: string, tooltip?: string): ModelPara
   })
 }
 
-type ParamAxis = { id: string, values: string[] }
+interface ParamAxis { id: string, values: string[] }
 
 function buildParameterDefinitions(
   provider: ProviderEntry,
@@ -259,7 +258,7 @@ function buildVariantSuffix(combo: VariantCombo, providerType: ProviderType, con
   return segments.length > 0 ? segments.join(' ') : null
 }
 
-function isDefaultCombo(combo: VariantCombo, model: ProviderModel, providerType: ProviderType): boolean {
+function isDefaultCombo(combo: VariantCombo, model: ProviderModel, _providerType: ProviderType): boolean {
   for (const [id, val] of combo.params) {
     switch (id) {
       case 'reasoning':
@@ -267,8 +266,9 @@ function isDefaultCombo(combo: VariantCombo, model: ProviderModel, providerType:
           if (val !== model.thinkingLevel)
             return false
         }
-        else if (val !== 'none')
+        else if (val !== 'none') {
           return false
+        }
         break
       case 'thinking':
         if (val !== String(!!model.thinking))
@@ -321,10 +321,12 @@ function buildLegacySuffix(model: ProviderModel): string | null {
       const label = LEVEL_LABELS[model.thinkingLevel.toLowerCase()] ?? model.thinkingLevel
       segments.push(`:icon-brain: ${label}`)
     }
-    else if (model.thinkingBudgetTokens !== undefined && model.thinkingBudgetTokens > 0)
+    else if (model.thinkingBudgetTokens !== undefined && model.thinkingBudgetTokens > 0) {
       segments.push(`:icon-brain: ${formatBudgetLabel(model.thinkingBudgetTokens)}`)
-    else
+    }
+    else {
       segments.push(':icon-brain:')
+    }
   }
   if (model.fastMode)
     segments.push('Fast')

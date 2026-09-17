@@ -1,3 +1,4 @@
+import type { ModelTestErrorKind, ModelTestResult, ProtocolAttempt, ProtocolDetection } from '../../../shared/modelTestTypes'
 /**
  * 模型连通性测试 —— 用**真实协议路径**发一次最小请求并测量。
  *
@@ -17,15 +18,14 @@
  *    会得到一个好看但毫无意义的首字延迟，所以正文首字与首事件分开记。
  */
 import type { ProviderEntry, ProviderModel, ProviderType } from '../../data/defaults'
-import type { ModelTestErrorKind, ModelTestResult, ProtocolAttempt, ProtocolDetection } from '../../../shared/modelTestTypes'
 import type { LLMProvider, LLMStreamEvent, LLMStreamRequest } from './types'
+import { buildProviderBaseUrl } from '../../../shared/providerProtocol'
+import { effectiveProviderType, PROVIDER_TYPES } from '../../data/defaults'
+import { countTokens } from '../agent/tokenCounter'
 import { AnthropicProvider } from './anthropic'
 import { GeminiProvider } from './gemini'
 import { OpenAIChatProvider } from './openai-chat'
 import { OpenAIResponsesProvider } from './openai-responses'
-import { effectiveProviderType, PROVIDER_TYPES } from '../../data/defaults'
-import { buildProviderBaseUrl } from '../../../shared/providerProtocol'
-import { countTokens } from '../agent/tokenCounter'
 
 export const MODEL_TEST_PROMPT
   = 'Output the numbers 1 through 120 separated by a single space. No commas, no newlines, no explanation.'
@@ -109,7 +109,7 @@ async function nextOrIdle<T>(pending: Promise<IteratorResult<T>>): Promise<Itera
     return await Promise.race([
       pending,
       new Promise<typeof IDLE>((resolve) => {
-        timer = setTimeout(() => resolve(IDLE), IDLE_POLL_MS)
+        timer = setTimeout(resolve, IDLE_POLL_MS, IDLE)
       }),
     ])
   }

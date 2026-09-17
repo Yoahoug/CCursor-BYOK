@@ -10,12 +10,12 @@
  *
  * BYOK: 返回 hasSeen=true 跳过所有广告
  */
-import type { ConnectRouter } from '@connectrpc/connect';
-import { InAppAdService } from '../../gen/aiserver_v1_pb';
+import type { ConnectRouter } from '@connectrpc/connect'
+import { InAppAdService } from '../../gen/aiserver_v1_pb'
 
 export default (router: ConnectRouter) => {
-    router.service(InAppAdService, {
-        hasSeenAd: async () => ({ hasSeen: true }),
-        markAdAsSeen: async () => ({}),
-    });
-};
+  router.service(InAppAdService, {
+    hasSeenAd: async () => ({ hasSeen: true }),
+    markAdAsSeen: async () => ({}),
+  })
+}

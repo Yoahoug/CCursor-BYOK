@@ -9,11 +9,11 @@
  *
  * BYOK: IsConnected 返回空消息 (proto3 默认值即 connected)
  */
-import type { ConnectRouter } from '@connectrpc/connect';
-import { NetworkService } from '../../gen/aiserver_v1_pb';
+import type { ConnectRouter } from '@connectrpc/connect'
+import { NetworkService } from '../../gen/aiserver_v1_pb'
 
 export default (router: ConnectRouter) => {
-    router.service(NetworkService, {
-        isConnected: async () => ({}),
-    });
-};
+  router.service(NetworkService, {
+    isConnected: async () => ({}),
+  })
+}

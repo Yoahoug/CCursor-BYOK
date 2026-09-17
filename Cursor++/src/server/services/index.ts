@@ -18,88 +18,88 @@
  *   geoCpp (不拦截)    — completion/FileSyncService
  *   bcProxy (BYOK stub) — core/BackgroundComposerService
  */
-import type { ConnectRouter } from '@connectrpc/connect';
+import type { ConnectRouter } from '@connectrpc/connect'
 
-// core
-import AiService from './core/AiService';
-import ChatService from './core/ChatService';
-import AgentService from './core/AgentService';
-import BackgroundComposerService from './core/BackgroundComposerService';
-import BidiService from './core/BidiService';
-import ReplayChatService from './core/ReplayChatService';
-
-// completion
-import CppService from './completion/CppService';
-import CmdKService from './completion/CmdKService';
-import FileSyncService from './completion/FileSyncService';
-
+import AuthService from './account/AuthService'
 // account
-import DashboardService from './account/DashboardService';
-import AuthService from './account/AuthService';
-import InAppAdService from './account/InAppAdService';
+import DashboardService from './account/DashboardService'
+import InAppAdService from './account/InAppAdService'
+import CmdKService from './completion/CmdKService'
+// completion
+import CppService from './completion/CppService'
+import FileSyncService from './completion/FileSyncService'
 
-// telemetry
-import AnalyticsService from './telemetry/AnalyticsService';
-import MetricsService from './telemetry/MetricsService';
-import ProfilingService from './telemetry/ProfilingService';
-import WebProfilingService from './telemetry/WebProfilingService';
-import TraceService from './telemetry/TraceService';
-import ChatRequestEventService from './telemetry/ChatRequestEventService';
-import ToolCallEventService from './telemetry/ToolCallEventService';
-import PerformanceEventService from './telemetry/PerformanceEventService';
+import AgentService from './core/AgentService'
+// core
+import AiService from './core/AiService'
+import BackgroundComposerService from './core/BackgroundComposerService'
 
+import BidiService from './core/BidiService'
+import ChatService from './core/ChatService'
+import ReplayChatService from './core/ReplayChatService'
+
+import HealthService from './infra/HealthService'
+import NetworkService from './infra/NetworkService'
 // infra
-import ServerConfigService from './infra/ServerConfigService';
-import NetworkService from './infra/NetworkService';
-import HealthService from './infra/HealthService';
-
-// repo
-import RepositoryService from './repo/RepositoryService';
-import GitIndexService from './repo/GitIndexService';
-import UploadService from './repo/UploadService';
-
+import ServerConfigService from './infra/ServerConfigService'
 // mcp
-import MCPRegistryService from './mcp/MCPRegistryService';
+import MCPRegistryService from './mcp/MCPRegistryService'
+import GitIndexService from './repo/GitIndexService'
+// repo
+import RepositoryService from './repo/RepositoryService'
+import UploadService from './repo/UploadService'
+// telemetry
+import AnalyticsService from './telemetry/AnalyticsService'
+
+import ChatRequestEventService from './telemetry/ChatRequestEventService'
+import MetricsService from './telemetry/MetricsService'
+import PerformanceEventService from './telemetry/PerformanceEventService'
+
+import ProfilingService from './telemetry/ProfilingService'
+import ToolCallEventService from './telemetry/ToolCallEventService'
+import TraceService from './telemetry/TraceService'
+
+import WebProfilingService from './telemetry/WebProfilingService'
 
 export default (router: ConnectRouter) => {
-    // core
-    AiService(router);
-    ChatService(router);
-    AgentService(router);
-    BackgroundComposerService(router);
-    BidiService(router);
-    ReplayChatService(router);
+  // core
+  AiService(router)
+  ChatService(router)
+  AgentService(router)
+  BackgroundComposerService(router)
+  BidiService(router)
+  ReplayChatService(router)
 
-    // completion
-    CppService(router);
-    CmdKService(router);
-    FileSyncService(router);
+  // completion
+  CppService(router)
+  CmdKService(router)
+  FileSyncService(router)
 
-    // account
-    DashboardService(router);
-    AuthService(router);
-    InAppAdService(router);
+  // account
+  DashboardService(router)
+  AuthService(router)
+  InAppAdService(router)
 
-    // telemetry
-    AnalyticsService(router);
-    MetricsService(router);
-    ProfilingService(router);
-    WebProfilingService(router);
-    TraceService(router);
-    ChatRequestEventService(router);
-    ToolCallEventService(router);
-    PerformanceEventService(router);
+  // telemetry
+  AnalyticsService(router)
+  MetricsService(router)
+  ProfilingService(router)
+  WebProfilingService(router)
+  TraceService(router)
+  ChatRequestEventService(router)
+  ToolCallEventService(router)
+  PerformanceEventService(router)
 
-    // infra
-    ServerConfigService(router);
-    NetworkService(router);
-    HealthService(router);
+  // infra
+  ServerConfigService(router)
+  NetworkService(router)
+  HealthService(router)
 
-    // repo
-    RepositoryService(router);
-    GitIndexService(router);
-    UploadService(router);
+  // repo
+  RepositoryService(router)
+  GitIndexService(router)
+  UploadService(router)
 
-    // mcp
-    MCPRegistryService(router);
-};
+  // mcp
+  MCPRegistryService(router)
+}

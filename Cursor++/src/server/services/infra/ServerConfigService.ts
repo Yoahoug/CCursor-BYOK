@@ -11,12 +11,12 @@
  *
  * 配置内容参照官方服务器实际返回值，由 handlers/server/config.ts 构造。
  */
-import type { ConnectRouter } from '@connectrpc/connect';
-import { ServerConfigService } from '../../gen/aiserver_v1_pb';
-import { buildServerConfig } from '../../handlers/server/config';
+import type { ConnectRouter } from '@connectrpc/connect'
+import { ServerConfigService } from '../../gen/aiserver_v1_pb'
+import { buildServerConfig } from '../../handlers/server/config'
 
 export default (router: ConnectRouter) => {
-    router.service(ServerConfigService, {
-        getServerConfig: async () => buildServerConfig(),
-    });
-};
+  router.service(ServerConfigService, {
+    getServerConfig: async () => buildServerConfig(),
+  })
+}

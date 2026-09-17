@@ -1,0 +1,633 @@
+{
+  "anthropic": [
+    {
+      "name": "AskQuestion",
+      "descriptionHash": "2751e1707e47de3a",
+      "descriptionLength": 595,
+      "schemaHash": "a272fb4119807690",
+      "schemaLength": 943
+    },
+    {
+      "name": "AwaitShell",
+      "descriptionHash": "abe3a3ba0226b206",
+      "descriptionLength": 1606,
+      "schemaHash": "19375dc228cc5ed8",
+      "schemaLength": 759
+    },
+    {
+      "name": "CallDynamicTool",
+      "descriptionHash": "8b4d235eebd9f495",
+      "descriptionLength": 297,
+      "schemaHash": "ba82b97f45303d55",
+      "schemaLength": 365
+    },
+    {
+      "name": "CreatePlan",
+      "descriptionHash": "6dd910c0f0f945a7",
+      "descriptionLength": 406,
+      "schemaHash": "3c53b93cc3e95327",
+      "schemaLength": 788
+    },
+    {
+      "name": "Delete",
+      "descriptionHash": "ad311f51189673dc",
+      "descriptionLength": 191,
+      "schemaHash": "90ecb341c8e0b85a",
+      "schemaLength": 133
+    },
+    {
+      "name": "Edit",
+      "descriptionHash": "b8ca48ca73b254f7",
+      "descriptionLength": 775,
+      "schemaHash": "2cb404785e133e53",
+      "schemaLength": 440
+    },
+    {
+      "name": "EditNotebook",
+      "descriptionHash": "621ebb7dd1a9e23d",
+      "descriptionLength": 1884,
+      "schemaHash": "e32dfa82a26c23e2",
+      "schemaLength": 1139
+    },
+    {
+      "name": "FetchMcpResource",
+      "descriptionHash": "59192e8b143ff6f5",
+      "descriptionLength": 249,
+      "schemaHash": "88848491ea001f23",
+      "schemaLength": 384
+    },
+    {
+      "name": "GenerateImage",
+      "descriptionHash": "04f9d2e2a4580e1e",
+      "descriptionLength": 1202,
+      "schemaHash": "c843e4e595c80a1d",
+      "schemaLength": 576
+    },
+    {
+      "name": "GetDynamicTools",
+      "descriptionHash": "5894c4e31e4f1168",
+      "descriptionLength": 672,
+      "schemaHash": "fc83204eb5981783",
+      "schemaLength": 386
+    },
+    {
+      "name": "Glob",
+      "descriptionHash": "1a0dd31b2dfb8b6f",
+      "descriptionLength": 382,
+      "schemaHash": "4739a99b1edc7464",
+      "schemaLength": 627
+    },
+    {
+      "name": "Grep",
+      "descriptionHash": "860075977fcc4235",
+      "descriptionLength": 1207,
+      "schemaHash": "bc6b9c8e4bbe8a82",
+      "schemaLength": 2046
+    },
+    {
+      "name": "ListMcpResources",
+      "descriptionHash": "a9faf6b2eb015aba",
+      "descriptionLength": 287,
+      "schemaHash": "5c5ebf85bcfd21f1",
+      "schemaLength": 188
+    },
+    {
+      "name": "Read",
+      "descriptionHash": "85f8034241fb1bf9",
+      "descriptionLength": 1035,
+      "schemaHash": "5c3d4f7ef7501ea7",
+      "schemaLength": 528
+    },
+    {
+      "name": "ReadLints",
+      "descriptionHash": "a03c67b7995b5fc6",
+      "descriptionLength": 622,
+      "schemaHash": "033b041a739ae778",
+      "schemaLength": 392
+    },
+    {
+      "name": "Shell",
+      "descriptionHash": "e8e632bb1d6c811d",
+      "descriptionLength": 10255,
+      "schemaHash": "3d292662757064a0",
+      "schemaLength": 684
+    },
+    {
+      "name": "SwitchMode",
+      "descriptionHash": "c743c7e99c2789f0",
+      "descriptionLength": 2987,
+      "schemaHash": "67c2d36fb50b74d7",
+      "schemaLength": 359
+    },
+    {
+      "name": "Task",
+      "descriptionHash": "f4ba75569230b921",
+      "descriptionLength": 6287,
+      "schemaHash": "f888eb9dfd7fb623",
+      "schemaLength": 1660
+    },
+    {
+      "name": "TodoWrite",
+      "descriptionHash": "fb32547697d48bb0",
+      "descriptionLength": 3984,
+      "schemaHash": "df4192eb0e70667e",
+      "schemaLength": 808
+    },
+    {
+      "name": "updateCurrentStep",
+      "descriptionHash": "603ce7d07a346722",
+      "descriptionLength": 372,
+      "schemaHash": "e95ef2abf34bc3f6",
+      "schemaLength": 1036
+    },
+    {
+      "name": "WebFetch",
+      "descriptionHash": "917df43c7671cea1",
+      "descriptionLength": 854,
+      "schemaHash": "c5523d42865d5f31",
+      "schemaLength": 170
+    },
+    {
+      "name": "WebSearch",
+      "descriptionHash": "9eabd199ab5551d2",
+      "descriptionLength": 961,
+      "schemaHash": "338c647dc78dcacd",
+      "schemaLength": 421
+    },
+    {
+      "name": "Write",
+      "descriptionHash": "d5e7ef64cef1881d",
+      "descriptionLength": 375,
+      "schemaHash": "71c1e07402e37037",
+      "schemaLength": 223
+    }
+  ],
+  "openai-chat": [
+    {
+      "name": "ApplyPatch",
+      "descriptionHash": "29b42c808dcb9706",
+      "descriptionLength": 1812,
+      "schemaHash": "2a1fbf21e55d248d",
+      "schemaLength": 284
+    },
+    {
+      "name": "AskQuestion",
+      "descriptionHash": "2751e1707e47de3a",
+      "descriptionLength": 595,
+      "schemaHash": "98bcb980f71c8521",
+      "schemaLength": 943
+    },
+    {
+      "name": "AwaitShell",
+      "descriptionHash": "7ef66cbb892c8cbe",
+      "descriptionLength": 1596,
+      "schemaHash": "19375dc228cc5ed8",
+      "schemaLength": 759
+    },
+    {
+      "name": "CallDynamicTool",
+      "descriptionHash": "8b4d235eebd9f495",
+      "descriptionLength": 297,
+      "schemaHash": "ba82b97f45303d55",
+      "schemaLength": 365
+    },
+    {
+      "name": "CreatePlan",
+      "descriptionHash": "6dd910c0f0f945a7",
+      "descriptionLength": 406,
+      "schemaHash": "3c53b93cc3e95327",
+      "schemaLength": 788
+    },
+    {
+      "name": "Delete",
+      "descriptionHash": "9572f088444fb2a1",
+      "descriptionLength": 133,
+      "schemaHash": "1c96d9ee4e4c01bb",
+      "schemaLength": 133
+    },
+    {
+      "name": "EditNotebook",
+      "descriptionHash": "4e1fbc1a3a373bd5",
+      "descriptionLength": 1859,
+      "schemaHash": "f8c4141ecf81e1f0",
+      "schemaLength": 1226
+    },
+    {
+      "name": "FetchMcpResource",
+      "descriptionHash": "59192e8b143ff6f5",
+      "descriptionLength": 249,
+      "schemaHash": "cd71adda4154a92d",
+      "schemaLength": 384
+    },
+    {
+      "name": "GenerateImage",
+      "descriptionHash": "04f9d2e2a4580e1e",
+      "descriptionLength": 1202,
+      "schemaHash": "611f85a43c17d073",
+      "schemaLength": 517
+    },
+    {
+      "name": "GetDynamicTools",
+      "descriptionHash": "5894c4e31e4f1168",
+      "descriptionLength": 672,
+      "schemaHash": "fc83204eb5981783",
+      "schemaLength": 386
+    },
+    {
+      "name": "Glob",
+      "descriptionHash": "1a0dd31b2dfb8b6f",
+      "descriptionLength": 382,
+      "schemaHash": "c99635cc4a22a4c5",
+      "schemaLength": 621
+    },
+    {
+      "name": "ListMcpResources",
+      "descriptionHash": "a9faf6b2eb015aba",
+      "descriptionLength": 287,
+      "schemaHash": "5c5ebf85bcfd21f1",
+      "schemaLength": 188
+    },
+    {
+      "name": "ReadFile",
+      "descriptionHash": "85f8034241fb1bf9",
+      "descriptionLength": 1035,
+      "schemaHash": "091ec641f53eb223",
+      "schemaLength": 522
+    },
+    {
+      "name": "ReadLints",
+      "descriptionHash": "a4ba93b2f9fd5c9f",
+      "descriptionLength": 207,
+      "schemaHash": "033b041a739ae778",
+      "schemaLength": 392
+    },
+    {
+      "name": "rg",
+      "descriptionHash": "c5734edf020515d4",
+      "descriptionLength": 592,
+      "schemaHash": "d7c68afd3cb918e3",
+      "schemaLength": 2046
+    },
+    {
+      "name": "Shell",
+      "descriptionHash": "b708db2cfa52e285",
+      "descriptionLength": 10038,
+      "schemaHash": "115b89b5a05dc931",
+      "schemaLength": 684
+    },
+    {
+      "name": "Subagent",
+      "descriptionHash": "97b9f3e4e845b0dd",
+      "descriptionLength": 6108,
+      "schemaHash": "7b3732e633f9b381",
+      "schemaLength": 1687
+    },
+    {
+      "name": "SwitchMode",
+      "descriptionHash": "ab7fb157025dc8bb",
+      "descriptionLength": 2981,
+      "schemaHash": "2c2be74fc1fd028d",
+      "schemaLength": 359
+    },
+    {
+      "name": "TodoWrite",
+      "descriptionHash": "7a8e0c4384b91e64",
+      "descriptionLength": 357,
+      "schemaHash": "9b30309238682bdb",
+      "schemaLength": 808
+    },
+    {
+      "name": "updateCurrentStep",
+      "descriptionHash": "603ce7d07a346722",
+      "descriptionLength": 372,
+      "schemaHash": "c99527bc09231d7e",
+      "schemaLength": 649
+    },
+    {
+      "name": "WebFetch",
+      "descriptionHash": "725f66aa9d2dac25",
+      "descriptionLength": 767,
+      "schemaHash": "0fca9c6951bfdc45",
+      "schemaLength": 170
+    },
+    {
+      "name": "WebSearch",
+      "descriptionHash": "1c0350d572befd2c",
+      "descriptionLength": 162,
+      "schemaHash": "54a8f82b27ccf7a0",
+      "schemaLength": 421
+    }
+  ],
+  "openai-responses": [
+    {
+      "name": "ApplyPatch",
+      "descriptionHash": "29b42c808dcb9706",
+      "descriptionLength": 1812,
+      "schemaHash": "2a1fbf21e55d248d",
+      "schemaLength": 284
+    },
+    {
+      "name": "AskQuestion",
+      "descriptionHash": "2751e1707e47de3a",
+      "descriptionLength": 595,
+      "schemaHash": "98bcb980f71c8521",
+      "schemaLength": 943
+    },
+    {
+      "name": "AwaitShell",
+      "descriptionHash": "7ef66cbb892c8cbe",
+      "descriptionLength": 1596,
+      "schemaHash": "19375dc228cc5ed8",
+      "schemaLength": 759
+    },
+    {
+      "name": "CallDynamicTool",
+      "descriptionHash": "8b4d235eebd9f495",
+      "descriptionLength": 297,
+      "schemaHash": "ba82b97f45303d55",
+      "schemaLength": 365
+    },
+    {
+      "name": "CreatePlan",
+      "descriptionHash": "6dd910c0f0f945a7",
+      "descriptionLength": 406,
+      "schemaHash": "3c53b93cc3e95327",
+      "schemaLength": 788
+    },
+    {
+      "name": "Delete",
+      "descriptionHash": "9572f088444fb2a1",
+      "descriptionLength": 133,
+      "schemaHash": "1c96d9ee4e4c01bb",
+      "schemaLength": 133
+    },
+    {
+      "name": "EditNotebook",
+      "descriptionHash": "4e1fbc1a3a373bd5",
+      "descriptionLength": 1859,
+      "schemaHash": "f8c4141ecf81e1f0",
+      "schemaLength": 1226
+    },
+    {
+      "name": "FetchMcpResource",
+      "descriptionHash": "59192e8b143ff6f5",
+      "descriptionLength": 249,
+      "schemaHash": "cd71adda4154a92d",
+      "schemaLength": 384
+    },
+    {
+      "name": "GenerateImage",
+      "descriptionHash": "04f9d2e2a4580e1e",
+      "descriptionLength": 1202,
+      "schemaHash": "611f85a43c17d073",
+      "schemaLength": 517
+    },
+    {
+      "name": "GetDynamicTools",
+      "descriptionHash": "5894c4e31e4f1168",
+      "descriptionLength": 672,
+      "schemaHash": "fc83204eb5981783",
+      "schemaLength": 386
+    },
+    {
+      "name": "Glob",
+      "descriptionHash": "1a0dd31b2dfb8b6f",
+      "descriptionLength": 382,
+      "schemaHash": "c99635cc4a22a4c5",
+      "schemaLength": 621
+    },
+    {
+      "name": "ListMcpResources",
+      "descriptionHash": "a9faf6b2eb015aba",
+      "descriptionLength": 287,
+      "schemaHash": "5c5ebf85bcfd21f1",
+      "schemaLength": 188
+    },
+    {
+      "name": "ReadFile",
+      "descriptionHash": "85f8034241fb1bf9",
+      "descriptionLength": 1035,
+      "schemaHash": "091ec641f53eb223",
+      "schemaLength": 522
+    },
+    {
+      "name": "ReadLints",
+      "descriptionHash": "a4ba93b2f9fd5c9f",
+      "descriptionLength": 207,
+      "schemaHash": "033b041a739ae778",
+      "schemaLength": 392
+    },
+    {
+      "name": "rg",
+      "descriptionHash": "c5734edf020515d4",
+      "descriptionLength": 592,
+      "schemaHash": "d7c68afd3cb918e3",
+      "schemaLength": 2046
+    },
+    {
+      "name": "Shell",
+      "descriptionHash": "b708db2cfa52e285",
+      "descriptionLength": 10038,
+      "schemaHash": "115b89b5a05dc931",
+      "schemaLength": 684
+    },
+    {
+      "name": "Subagent",
+      "descriptionHash": "97b9f3e4e845b0dd",
+      "descriptionLength": 6108,
+      "schemaHash": "7b3732e633f9b381",
+      "schemaLength": 1687
+    },
+    {
+      "name": "SwitchMode",
+      "descriptionHash": "ab7fb157025dc8bb",
+      "descriptionLength": 2981,
+      "schemaHash": "2c2be74fc1fd028d",
+      "schemaLength": 359
+    },
+    {
+      "name": "TodoWrite",
+      "descriptionHash": "7a8e0c4384b91e64",
+      "descriptionLength": 357,
+      "schemaHash": "9b30309238682bdb",
+      "schemaLength": 808
+    },
+    {
+      "name": "updateCurrentStep",
+      "descriptionHash": "603ce7d07a346722",
+      "descriptionLength": 372,
+      "schemaHash": "c99527bc09231d7e",
+      "schemaLength": 649
+    },
+    {
+      "name": "WebFetch",
+      "descriptionHash": "725f66aa9d2dac25",
+      "descriptionLength": 767,
+      "schemaHash": "0fca9c6951bfdc45",
+      "schemaLength": 170
+    },
+    {
+      "name": "WebSearch",
+      "descriptionHash": "1c0350d572befd2c",
+      "descriptionLength": 162,
+      "schemaHash": "54a8f82b27ccf7a0",
+      "schemaLength": 421
+    }
+  ],
+  "gemini": [
+    {
+      "name": "AskQuestion",
+      "descriptionHash": "2751e1707e47de3a",
+      "descriptionLength": 595,
+      "schemaHash": "fdd11fbf19204d87",
+      "schemaLength": 917
+    },
+    {
+      "name": "AwaitShell",
+      "descriptionHash": "abe3a3ba0226b206",
+      "descriptionLength": 1606,
+      "schemaHash": "4bd6c84608683217",
+      "schemaLength": 759
+    },
+    {
+      "name": "CallDynamicTool",
+      "descriptionHash": "8b4d235eebd9f495",
+      "descriptionLength": 297,
+      "schemaHash": "0ea7a02fbfb92dfe",
+      "schemaLength": 365
+    },
+    {
+      "name": "CreatePlan",
+      "descriptionHash": "6dd910c0f0f945a7",
+      "descriptionLength": 406,
+      "schemaHash": "8c098a79952ebfcb",
+      "schemaLength": 788
+    },
+    {
+      "name": "Delete",
+      "descriptionHash": "ad311f51189673dc",
+      "descriptionLength": 191,
+      "schemaHash": "6eac93a5cd01781b",
+      "schemaLength": 133
+    },
+    {
+      "name": "Edit",
+      "descriptionHash": "b8ca48ca73b254f7",
+      "descriptionLength": 775,
+      "schemaHash": "59176ba3631a9a33",
+      "schemaLength": 440
+    },
+    {
+      "name": "FetchMcpResource",
+      "descriptionHash": "59192e8b143ff6f5",
+      "descriptionLength": 249,
+      "schemaHash": "eb4f5e28ee00a881",
+      "schemaLength": 384
+    },
+    {
+      "name": "GenerateImage",
+      "descriptionHash": "95c222c7f0e3b2e0",
+      "descriptionLength": 1203,
+      "schemaHash": "cfd1885c8e436640",
+      "schemaLength": 576
+    },
+    {
+      "name": "GetDynamicTools",
+      "descriptionHash": "5894c4e31e4f1168",
+      "descriptionLength": 672,
+      "schemaHash": "fe2a6e183e9461da",
+      "schemaLength": 370
+    },
+    {
+      "name": "Glob",
+      "descriptionHash": "e42df58b24ff819f",
+      "descriptionLength": 384,
+      "schemaHash": "83478fceb6b7ae7c",
+      "schemaLength": 627
+    },
+    {
+      "name": "Grep",
+      "descriptionHash": "860075977fcc4235",
+      "descriptionLength": 1207,
+      "schemaHash": "827106dc3a199e52",
+      "schemaLength": 2022
+    },
+    {
+      "name": "ListMcpResources",
+      "descriptionHash": "a9faf6b2eb015aba",
+      "descriptionLength": 287,
+      "schemaHash": "09a99cde71c99f80",
+      "schemaLength": 188
+    },
+    {
+      "name": "Read",
+      "descriptionHash": "85f8034241fb1bf9",
+      "descriptionLength": 1035,
+      "schemaHash": "5b8bd3a8a5460275",
+      "schemaLength": 528
+    },
+    {
+      "name": "ReadLints",
+      "descriptionHash": "a03c67b7995b5fc6",
+      "descriptionLength": 622,
+      "schemaHash": "94e468c58aeaf7e9",
+      "schemaLength": 392
+    },
+    {
+      "name": "Shell",
+      "descriptionHash": "e273b221597e9ed1",
+      "descriptionLength": 10257,
+      "schemaHash": "90d11b0e3479c378",
+      "schemaLength": 684
+    },
+    {
+      "name": "SwitchMode",
+      "descriptionHash": "c743c7e99c2789f0",
+      "descriptionLength": 2987,
+      "schemaHash": "ba5d0077952b40a1",
+      "schemaLength": 335
+    },
+    {
+      "name": "Task",
+      "descriptionHash": "24fb38c5c28f319f",
+      "descriptionLength": 6233,
+      "schemaHash": "fa06a4428790055b",
+      "schemaLength": 1660
+    },
+    {
+      "name": "TodoWrite",
+      "descriptionHash": "fb32547697d48bb0",
+      "descriptionLength": 3984,
+      "schemaHash": "444667c25dece468",
+      "schemaLength": 795
+    },
+    {
+      "name": "updateCurrentStep",
+      "descriptionHash": "603ce7d07a346722",
+      "descriptionLength": 372,
+      "schemaHash": "0fb60415e04d2a6e",
+      "schemaLength": 691
+    },
+    {
+      "name": "WebFetch",
+      "descriptionHash": "5377bde971302c28",
+      "descriptionLength": 855,
+      "schemaHash": "198ff590d074d63c",
+      "schemaLength": 170
+    },
+    {
+      "name": "WebSearch",
+      "descriptionHash": "73ed86e3ec7ead91",
+      "descriptionLength": 956,
+      "schemaHash": "b1614ef839e07bf5",
+      "schemaLength": 421
+    },
+    {
+      "name": "Write",
+      "descriptionHash": "d5e7ef64cef1881d",
+      "descriptionLength": 375,
+      "schemaHash": "af64ba29e95b1a61",
+      "schemaLength": 223
+    }
+  ]
+}

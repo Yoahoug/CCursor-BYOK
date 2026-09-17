@@ -8,9 +8,9 @@
  * 两者通过 requestId 关联。Session 维护一个 per-requestId 的消息队列，
  * BidiAppend 写入消息，RunSSE 消费消息并驱动 LLM 调用。
  */
-import { fromBinary, toJson } from '@bufbuild/protobuf';
-import { AgentClientMessageSchema } from '../../gen/agent_v1_pb';
-import { logger } from '../../logger';
+import { fromBinary, toJson } from '@bufbuild/protobuf'
+import { AgentClientMessageSchema } from '../../gen/agent_v1_pb'
+import { logger } from '../../logger'
 
 /**
  * 后台 job 登记项。
@@ -26,56 +26,56 @@ import { logger } from '../../logger';
  * 故注册表挂在 session 上, 而非全局 Map。
  */
 export interface BackgroundJob {
-    kind: 'shell' | 'subagent';
-    /** shell job: 执行侧回报的 shell_id (AwaitShell 的 task_id) */
-    shellId?: number;
-    /** subagent job: SubagentSuccess.agentId (AwaitShell 的 task_id) */
-    agentId?: string;
-    /** shell job: 终端输出文件所在目录 (env.terminalsFolder), 文件为 {terminalsFolder}/{shellId}.txt */
-    terminalsFolder?: string;
-    /** subagent job: transcript 文件路径 (SubagentSuccess.transcriptPath), 供日志/降级使用 */
-    transcriptPath?: string;
-    command?: string;
+  kind: 'shell' | 'subagent'
+  /** shell job: 执行侧回报的 shell_id (AwaitShell 的 task_id) */
+  shellId?: number
+  /** subagent job: SubagentSuccess.agentId (AwaitShell 的 task_id) */
+  agentId?: string
+  /** shell job: 终端输出文件所在目录 (env.terminalsFolder), 文件为 {terminalsFolder}/{shellId}.txt */
+  terminalsFolder?: string
+  /** subagent job: transcript 文件路径 (SubagentSuccess.transcriptPath), 供日志/降级使用 */
+  transcriptPath?: string
+  command?: string
 }
 
 export interface AgentSession {
-    requestId: string;
-    messages: Array<Record<string, unknown>>;
-    /** @deprecated 保留向后兼容，新代码使用 listeners */
-    notify: (() => void) | null;
-    listeners: Set<() => void>;
-    closed: boolean;
-    /**
-     * 后台 job 注册表 (key = task_id 字符串形式: shell 用 shellId, subagent 用 agentId)。
-     * 转后台时登记, AwaitShell 据此分流 readArgs / subagentAwaitArgs。
-     */
-    backgroundJobs: Map<string, BackgroundJob>;
-    /** env.terminalsFolder — 用于构造后台 shell 的终端文件路径 {terminalsFolder}/{shellId}.txt */
-    terminalsFolder?: string;
-    /**
-     * 客户端 cancelAction 携带的 reason;一经设置即表示本 run 已被客户端中断。
-     *
-     * 客户端中断当前生成 (点停止、提交新消息抢占、steer 降级后升级为 interrupt)
-     * 时,ControlledConversationActionManager.abort() 会往同一条 BiDi 客户端流
-     * 发 ConversationAction{cancelAction},随后才本地 abort。这是服务端唯一能
-     * 感知"该停了"的信号 —— 不消费它,旧 run 会一直跑到 LLM 流自然结束,
-     * 表现为"发新消息时前一条没有被终止"。
-     *
-     * 与 closed 的区别: closed 是传输层断开,cancelled 是应用层中断,
-     * 后者到达时连接仍然活着(客户端还要用它接收后续帧)。
-     */
-    cancelledReason?: string;
+  requestId: string
+  messages: Array<Record<string, unknown>>
+  /** @deprecated 保留向后兼容，新代码使用 listeners */
+  notify: (() => void) | null
+  listeners: Set<() => void>
+  closed: boolean
+  /**
+   * 后台 job 注册表 (key = task_id 字符串形式: shell 用 shellId, subagent 用 agentId)。
+   * 转后台时登记, AwaitShell 据此分流 readArgs / subagentAwaitArgs。
+   */
+  backgroundJobs: Map<string, BackgroundJob>
+  /** env.terminalsFolder — 用于构造后台 shell 的终端文件路径 {terminalsFolder}/{shellId}.txt */
+  terminalsFolder?: string
+  /**
+   * 客户端 cancelAction 携带的 reason;一经设置即表示本 run 已被客户端中断。
+   *
+   * 客户端中断当前生成 (点停止、提交新消息抢占、steer 降级后升级为 interrupt)
+   * 时,ControlledConversationActionManager.abort() 会往同一条 BiDi 客户端流
+   * 发 ConversationAction{cancelAction},随后才本地 abort。这是服务端唯一能
+   * 感知"该停了"的信号 —— 不消费它,旧 run 会一直跑到 LLM 流自然结束,
+   * 表现为"发新消息时前一条没有被终止"。
+   *
+   * 与 closed 的区别: closed 是传输层断开,cancelled 是应用层中断,
+   * 后者到达时连接仍然活着(客户端还要用它接收后续帧)。
+   */
+  cancelledReason?: string
 }
 
 export function createEphemeralSession(requestId: string): AgentSession {
-    return {
-        requestId,
-        messages: [],
-        notify: null,
-        listeners: new Set(),
-        closed: false,
-        backgroundJobs: new Map(),
-    };
+  return {
+    requestId,
+    messages: [],
+    notify: null,
+    listeners: new Set(),
+    closed: false,
+    backgroundJobs: new Map(),
+  }
 }
 
 /**
@@ -85,8 +85,8 @@ export function createEphemeralSession(requestId: string): AgentSession {
  * ConversationAction 上,走同一条 BiDi 客户端流发来。
  */
 function isContextInjection(json: Record<string, unknown>): boolean {
-    const action = json.conversationAction as Record<string, unknown> | undefined;
-    return action !== undefined && 'injectContextAction' in action;
+  const action = json.conversationAction as Record<string, unknown> | undefined
+  return action !== undefined && 'injectContextAction' in action
 }
 
 /**
@@ -100,12 +100,12 @@ function isContextInjection(json: Record<string, unknown>): boolean {
  *   "user_stopped_generation"  用户点停止按钮
  */
 function extractCancelReason(json: Record<string, unknown>): string | undefined {
-    const action = json.conversationAction as Record<string, unknown> | undefined;
-    if (!action || !('cancelAction' in action))
-        return undefined;
-    const cancel = action.cancelAction as Record<string, unknown> | undefined;
-    const reason = cancel?.reason;
-    return typeof reason === 'string' && reason ? reason : 'cancelled';
+  const action = json.conversationAction as Record<string, unknown> | undefined
+  if (!action || !('cancelAction' in action))
+    return undefined
+  const cancel = action.cancelAction as Record<string, unknown> | undefined
+  const reason = cancel?.reason
+  return typeof reason === 'string' && reason ? reason : 'cancelled'
 }
 
 /**
@@ -123,91 +123,92 @@ function extractCancelReason(json: Record<string, unknown>): string | undefined 
  * waitForMessageMatching 的 predicate 会匹配,留在 messages 里只会无限堆积。
  */
 function ingestSessionMessage(session: AgentSession, json: Record<string, unknown>): void {
-    if (isContextInjection(json)) {
-        logger.debug({ requestId: session.requestId }, '[SESSION] dropping context injection (run-time injection unsupported)');
-        return;
+  if (isContextInjection(json)) {
+    logger.debug({ requestId: session.requestId }, '[SESSION] dropping context injection (run-time injection unsupported)')
+    return
+  }
+  const cancelReason = extractCancelReason(json)
+  if (cancelReason !== undefined) {
+    // 只认第一次 —— 客户端可能重复发,reason 以最先到达的为准
+    if (session.cancelledReason === undefined) {
+      session.cancelledReason = cancelReason
+      logger.info({ requestId: session.requestId, reason: cancelReason }, '[CANCEL] client cancelled the run')
     }
-    const cancelReason = extractCancelReason(json);
-    if (cancelReason !== undefined) {
-        // 只认第一次 —— 客户端可能重复发,reason 以最先到达的为准
-        if (session.cancelledReason === undefined) {
-            session.cancelledReason = cancelReason;
-            logger.info({ requestId: session.requestId, reason: cancelReason }, '[CANCEL] client cancelled the run');
-        }
-    }
-    else {
-        session.messages.push(json);
-    }
-    notifyAll(session);
+  }
+  else {
+    session.messages.push(json)
+  }
+  notifyAll(session)
 }
 
 /** 客户端是否已中断本 run。 */
 export function isSessionCancelled(session: AgentSession): boolean {
-    return session.cancelledReason !== undefined;
+  return session.cancelledReason !== undefined
 }
 
 /** 登记一个后台 job, 供后续 AwaitShell 分流。key = task_id 字符串形式。 */
 export function registerBackgroundJob(session: AgentSession, taskId: string, job: BackgroundJob): void {
-    session.backgroundJobs.set(taskId, job);
-    logger.info({ requestId: session.requestId, taskId, kind: job.kind }, '[SESSION] background job registered');
+  session.backgroundJobs.set(taskId, job)
+  logger.info({ requestId: session.requestId, taskId, kind: job.kind }, '[SESSION] background job registered')
 }
 
 /** 按 task_id 查找已登记的后台 job。 */
 export function getBackgroundJob(session: AgentSession, taskId: string): BackgroundJob | undefined {
-    return session.backgroundJobs.get(taskId);
+  return session.backgroundJobs.get(taskId)
 }
 
 function notifyAll(session: AgentSession): void {
-    session.notify?.();
-    for (const fn of session.listeners) fn();
+  session.notify?.()
+  for (const fn of session.listeners) fn()
 }
 
 export function pushSessionMessage(session: AgentSession, json: Record<string, unknown>): void {
-    ingestSessionMessage(session, json);
+  ingestSessionMessage(session, json)
 }
 
 export function markSessionClosed(session: AgentSession): void {
-    session.closed = true;
-    notifyAll(session);
+  session.closed = true
+  notifyAll(session)
 }
 
-const sessions = new Map<string, AgentSession>();
+const sessions = new Map<string, AgentSession>()
 
 export function getOrCreateSession(requestId: string): AgentSession {
-    let session = sessions.get(requestId);
-    if (!session) {
-        // 复用 createEphemeralSession —— 两处各自写字面量时,新增字段容易只补一处
-        session = createEphemeralSession(requestId);
-        sessions.set(requestId, session);
-        logger.debug({ requestId }, '[SESSION] created');
-    }
-    return session;
+  let session = sessions.get(requestId)
+  if (!session) {
+    // 复用 createEphemeralSession —— 两处各自写字面量时,新增字段容易只补一处
+    session = createEphemeralSession(requestId)
+    sessions.set(requestId, session)
+    logger.debug({ requestId }, '[SESSION] created')
+  }
+  return session
 }
 
 /** BidiAppend 调用时，将消息推入 session 队列 */
 export function appendMessage(requestId: string, data: string): void {
-    const session = getOrCreateSession(requestId);
+  const session = getOrCreateSession(requestId)
 
-    // data 是 proto string 类型，实际承载的是 protobuf binary 的 hex 字符串表示。
-    // "0ad88200a00012..." → hex decode → protobuf bytes
-    try {
-        const bytes = Buffer.from(data, 'hex');
-        const clientMsg = fromBinary(AgentClientMessageSchema, bytes);
-        const json = toJson(AgentClientMessageSchema, clientMsg) as Record<string, unknown>;
-        const keys = Object.keys(json);
-        logger.info({ requestId, keys, protoBytes: bytes.length }, '[SESSION] appendMessage');
-        ingestSessionMessage(session, json);
-    } catch (e) {
-        logger.warn({ requestId, dataLen: data.length, error: (e as Error).message }, '[SESSION] proto decode failed');
-    }
+  // data 是 proto string 类型，实际承载的是 protobuf binary 的 hex 字符串表示。
+  // "0ad88200a00012..." → hex decode → protobuf bytes
+  try {
+    const bytes = Buffer.from(data, 'hex')
+    const clientMsg = fromBinary(AgentClientMessageSchema, bytes)
+    const json = toJson(AgentClientMessageSchema, clientMsg) as Record<string, unknown>
+    const keys = Object.keys(json)
+    logger.info({ requestId, keys, protoBytes: bytes.length }, '[SESSION] appendMessage')
+    ingestSessionMessage(session, json)
+  }
+  catch (e) {
+    logger.warn({ requestId, dataLen: data.length, error: (e as Error).message }, '[SESSION] proto decode failed')
+  }
 }
 
 /** 等待下一条消息（任意类型） */
 export async function waitForMessage(
-    session: AgentSession,
-    timeoutMs: number | null = 30_000,
+  session: AgentSession,
+  timeoutMs: number | null = 30_000,
 ): Promise<Record<string, unknown> | null> {
-    return waitForMessageMatching(session, () => true, timeoutMs);
+  return waitForMessageMatching(session, () => true, timeoutMs)
 }
 
 /**
@@ -218,81 +219,91 @@ export async function waitForMessage(
  * 而不被 kvClientMessage/clientHeartbeat 干扰。
  */
 export async function waitForMessageMatching(
-    session: AgentSession,
-    predicate: (msg: Record<string, unknown>) => boolean,
-    timeoutMs: number | null = 30_000,
+  session: AgentSession,
+  predicate: (msg: Record<string, unknown>) => boolean,
+  timeoutMs: number | null = 30_000,
 ): Promise<Record<string, unknown> | null> {
-    // 先检查队列中是否已有匹配消息
-    const idx = session.messages.findIndex(predicate);
-    if (idx >= 0) {
-        return session.messages.splice(idx, 1)[0];
+  // 先检查队列中是否已有匹配消息
+  const idx = session.messages.findIndex(predicate)
+  if (idx >= 0) {
+    return session.messages.splice(idx, 1)[0]
+  }
+  // cancelled 与 closed 同样立即结束等待 —— 调用方 (wait.ts) 据
+  // session.cancelledReason 区分二者,把前者转成 AgentRunAbortedError
+  if (session.closed || session.cancelledReason !== undefined)
+    return null
+
+  return new Promise<Record<string, unknown> | null>((resolve) => {
+    let resolved = false
+    // 先声明再赋值：cleanup 同时引用这两个变量，而 cleanup 可能在
+    // timeoutMs == null（无定时器）且 listener 被同步触发的路径上、
+    // 早于它们完成初始化就被调用 —— 那时会撞上 const 的 TDZ。
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let listener: () => void = () => {}
+
+    const cleanup = () => {
+      resolved = true
+      if (timer != null)
+        clearTimeout(timer)
+      session.listeners.delete(listener)
     }
-    // cancelled 与 closed 同样立即结束等待 —— 调用方 (wait.ts) 据
-    // session.cancelledReason 区分二者,把前者转成 AgentRunAbortedError
-    if (session.closed || session.cancelledReason !== undefined) return null;
 
-    return new Promise<Record<string, unknown> | null>((resolve) => {
-        let resolved = false;
+    if (timeoutMs != null) {
+      timer = setTimeout(() => {
+        if (resolved)
+          return
+        cleanup()
+        logger.warn({ requestId: session.requestId, timeoutMs }, '[SESSION] waitForMessage timeout')
+        resolve(null)
+      }, timeoutMs)
+    }
 
-        const cleanup = () => {
-            resolved = true;
-            if (timer != null)
-                clearTimeout(timer);
-            session.listeners.delete(listener);
-        };
+    listener = () => {
+      if (resolved)
+        return
+      const i = session.messages.findIndex(predicate)
+      if (i >= 0) {
+        cleanup()
+        resolve(session.messages.splice(i, 1)[0])
+        return
+      }
+      if (session.closed || session.cancelledReason !== undefined) {
+        cleanup()
+        resolve(null)
+      }
+    }
 
-        const timer = timeoutMs == null ? null : setTimeout(() => {
-            if (resolved)
-                return;
-            cleanup();
-            logger.warn({ requestId: session.requestId, timeoutMs }, '[SESSION] waitForMessage timeout');
-            resolve(null);
-        }, timeoutMs);
-
-        const listener = () => {
-            if (resolved)
-                return;
-            const i = session.messages.findIndex(predicate);
-            if (i >= 0) {
-                cleanup();
-                resolve(session.messages.splice(i, 1)[0]);
-                return;
-            }
-            if (session.closed || session.cancelledReason !== undefined) {
-                cleanup();
-                resolve(null);
-            }
-        };
-
-        session.listeners.add(listener);
-    });
+    session.listeners.add(listener)
+  })
 }
 
 export async function waitForInteractionResponse(
-    session: AgentSession,
-    id: number,
-    expectedCase: string,
-    timeoutMs: number | null = 60_000,
+  session: AgentSession,
+  id: number,
+  expectedCase: string,
+  timeoutMs: number | null = 60_000,
 ): Promise<Record<string, unknown> | null> {
-    return waitForMessageMatching(
-        session,
-        (msg) => {
-            if (!('interactionResponse' in msg)) return false;
-            const response = msg.interactionResponse as Record<string, unknown> | undefined;
-            if (!response) return false;
-            const responseId = typeof response.id === 'number' ? response.id : Number(response.id);
-            return responseId === id && expectedCase in response;
-        },
-        timeoutMs,
-    );
+  return waitForMessageMatching(
+    session,
+    (msg) => {
+      if (!('interactionResponse' in msg))
+        return false
+      const response = msg.interactionResponse as Record<string, unknown> | undefined
+      if (!response)
+        return false
+      const responseId = typeof response.id === 'number' ? response.id : Number(response.id)
+      return responseId === id && expectedCase in response
+    },
+    timeoutMs,
+  )
 }
 
 export function closeSession(requestId: string): void {
-    const session = sessions.get(requestId);
-    if (session) {
-        session.closed = true;
-        notifyAll(session);
-        sessions.delete(requestId);
-        logger.debug({ requestId }, '[SESSION] closed');
-    }
+  const session = sessions.get(requestId)
+  if (session) {
+    session.closed = true
+    notifyAll(session)
+    sessions.delete(requestId)
+    logger.debug({ requestId }, '[SESSION] closed')
+  }
 }

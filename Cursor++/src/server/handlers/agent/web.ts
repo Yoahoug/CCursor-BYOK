@@ -1,35 +1,140 @@
+import type { SearchProviderEntry, WebToolsConfig } from '../../data/defaults'
 import { getFetchConfig, getSearchConfig } from '../../config/searchConfigStore'
-import { loadSupermarkdown, supermarkdownUnavailableMessage } from './supermarkdown'
 import { logger } from '../../logger'
+import { loadSupermarkdown, supermarkdownUnavailableMessage } from './supermarkdown'
 
 const FETCH_TIMEOUT_MS = 30_000
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 const MAX_MARKDOWN_CHARS = 100_000
 const CACHE_TTL_MS = 5 * 60_000
-const BINARY_TYPES = /^(image|video|audio|application\/pdf|application\/octet-stream|application\/zip)/
+/** 二进制内容类型判定 —— 不捕获分组，只用它做 test */
+const BINARY_TYPES = /^(?:image|video|audio|application\/pdf|application\/octet-stream|application\/zip)/
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Cursor/3.4 Chrome/131.0.0.0 Safari/537.36'
 
 const EXCLUDE_SELECTORS = [
-  'nav', 'header', 'footer', 'aside',
-  '.sidebar', '.navigation', '.menu', '.nav',
-  '.advertisement', '.ads', '#ads', '.ad-container',
-  '.related-posts', '.comments', '.social-share',
-  'script', 'style', 'noscript', 'iframe',
-  '[role="navigation"]', '[role="banner"]', '[role="contentinfo"]',
+  'nav',
+  'header',
+  'footer',
+  'aside',
+  '.sidebar',
+  '.navigation',
+  '.menu',
+  '.nav',
+  '.advertisement',
+  '.ads',
+  '#ads',
+  '.ad-container',
+  '.related-posts',
+  '.comments',
+  '.social-share',
+  'script',
+  'style',
+  'noscript',
+  'iframe',
+  '[role="navigation"]',
+  '[role="banner"]',
+  '[role="contentinfo"]',
 ]
 
 interface CacheEntry { markdown: string, url: string, expiresAt: number }
 const fetchCache = new Map<string, CacheEntry>()
+
+/**
+ * 私网 / 特殊用途 IPv4 段。
+ *
+ * 覆盖 127.0.0.0/8（整个回环段，不只是 127.0.0.1）、10/8、172.16/12、
+ * 192.168/16、169.254/16（链路本地）、0.0.0.0/8（"本机"）、以及
+ * 100.64/10（运营商级 NAT）。
+ */
+const PRIVATE_IPV4_PATTERN = /^(?:0\.|10\.|127\.|169\.254\.|192\.168\.|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|172\.(?:1[6-9]|2\d|3[01])\.)/
+
+/**
+ * 归一化主机名，使各种等价写法落到同一个可比较的形式。
+ *
+ * `new URL()` 会做一部分归一化（`0x7f000001` / `2130706433` / `127.1` 都会
+ * 变成 `127.0.0.1`），但**IPv6 会带着方括号返回**（`[::1]`），而尾点
+ * （`localhost.`）也会保留。原实现直接拿 hostname 与 `'::1'` 比较，
+ * 因此 `http://[::1]:8080/` 这类写法能整个绕过守卫。
+ */
+function normalizeHostname(hostname: string): string {
+  let host = hostname.toLowerCase()
+  if (host.startsWith('[') && host.endsWith(']'))
+    host = host.slice(1, -1)
+  // 根区的绝对写法（localhost.）与 localhost 是同一台机器
+  while (host.endsWith('.'))
+    host = host.slice(0, -1)
+  return host
+}
+
+/**
+ * 该主机名是否是一个 IPv4 字面量。
+ *
+ * 只有字面量才该参与网段判断 —— 原实现直接对 hostname 跑 `/^(10\.|127\.)/`，
+ * 于是 `10.example.com`、`127.example.org` 这类**普通域名**会被误判为内网。
+ * 真实 IP 字面量此时已被 URL 解析器归一到点分十进制，所以这里只需做形状校验。
+ */
+function isIpv4Literal(host: string): boolean {
+  const parts = host.split('.')
+  if (parts.length !== 4)
+    return false
+  return parts.every((part) => {
+    if (!/^\d{1,3}$/.test(part))
+      return false
+    const value = Number(part)
+    return value >= 0 && value <= 255
+  })
+}
+
+/**
+ * 把 IPv4-mapped IPv6（`::ffff:7f00:1`）还原成点分十进制。
+ *
+ * URL 解析器会把它规范成十六进制形式，因此 `::ffff:127.0.0.1` 看一眼
+ * 认不出是回环地址 —— 必须还原后再走同一套 IPv4 判断。
+ */
+function ipv4FromMappedIpv6(host: string): string | null {
+  // ::ffff:a.b.c.d 与 ::ffff:xxxx:xxxx 两种形态都会出现
+  const dotted = host.match(/(?:^|:)ffff:(\d{1,3}(?:\.\d{1,3}){3})$/)
+  if (dotted)
+    return dotted[1]
+  const hex = host.match(/(?:^|:)ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/)
+  if (!hex)
+    return null
+  const high = Number.parseInt(hex[1], 16)
+  const low = Number.parseInt(hex[2], 16)
+  return [high >> 8, high & 0xFF, low >> 8, low & 0xFF].join('.')
+}
+
+/** IPv6 里的私网 / 特殊用途段：回环、未指定、ULA(fc00::/7)、链路本地(fe80::/10) */
+function isPrivateIpv6(host: string): boolean {
+  if (host === '::1' || host === '::')
+    return true
+  // fc00::/7 → 首字节 fc 或 fd；fe80::/10 → fe80–febf
+  if (/^f[cd][0-9a-f]{0,2}:/.test(host))
+    return true
+  if (/^fe[89ab][0-9a-f]?:/.test(host))
+    return true
+  return false
+}
 
 function isValidUrl(url: string): boolean {
   try {
     const u = new URL(url)
     if (u.protocol !== 'http:' && u.protocol !== 'https:')
       return false
-    const host = u.hostname.toLowerCase()
-    if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '0.0.0.0')
+    const host = normalizeHostname(u.hostname)
+    if (!host)
       return false
-    if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(host))
+    if (host === 'localhost' || host === '0.0.0.0' || host === '::' || host === '::1')
+      return false
+    // 只有真正的 IPv4 字面量才做网段判断，避免把 10.example.com 这类域名误杀
+    if (isIpv4Literal(host)) {
+      if (PRIVATE_IPV4_PATTERN.test(host))
+        return false
+    }
+    const mappedIpv4 = ipv4FromMappedIpv6(host)
+    if (mappedIpv4 && isIpv4Literal(mappedIpv4) && PRIVATE_IPV4_PATTERN.test(mappedIpv4))
+      return false
+    if (isPrivateIpv6(host))
       return false
     return true
   }
@@ -61,6 +166,17 @@ function htmlToMarkdown(html: string, sourceUrl: string): string {
   }
 }
 
+/**
+ * 无 supermarkdown 时的 HTML 纯文本降级。
+ *
+ * 当前**没有调用点**：`htmlToMarkdown` 在原生模块不可用时直接抛错，这是
+ * 0.0.16 刻意定下的行为（宁可可见地失败，也不要静默返回劣质正文）。
+ * 保留实现是因为它是唯一一条"模块缺失时仍能取到正文"的路径，删掉会让
+ * 将来想启用降级时无从下手。
+ *
+ * eslint 的 unused 告警在此局部关闭，避免它掩盖同目录真正的死代码。
+ */
+// eslint-disable-next-line unused-imports/no-unused-vars -- 刻意保留的降级路径，见上
 function fallbackStripHtml(html: string, sourceUrl: string): string {
   const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
   const title = titleMatch ? decodeHtmlEntities(titleMatch[1].replace(/<[^>]+>/g, '')).trim() : sourceUrl
@@ -109,13 +225,20 @@ async function fetchBuiltin(url: string): Promise<{ url: string, markdown: strin
       throw new Error(`Response body too large: ${text.length} bytes`)
     const finalUrl = response.url || url
     let markdown: string
-    if (contentType.includes('text/html') || /^<!doctype html/i.test(text) || /<html[\s>]/i.test(text))
+    if (contentType.includes('text/html') || /^<!doctype html/i.test(text) || /<html[\s>]/i.test(text)) {
       markdown = htmlToMarkdown(text, finalUrl)
-    else if (contentType.includes('application/json')) {
-      try { markdown = `# ${finalUrl}\n\n\`\`\`json\n${JSON.stringify(JSON.parse(text), null, 2).slice(0, MAX_MARKDOWN_CHARS)}\n\`\`\`` }
-      catch { markdown = `# ${finalUrl}\n\n\`\`\`\n${text.slice(0, MAX_MARKDOWN_CHARS)}\n\`\`\`` }
     }
-    else { markdown = `# ${finalUrl}\n\n${text.slice(0, MAX_MARKDOWN_CHARS)}` }
+    else if (contentType.includes('application/json')) {
+      try {
+        markdown = `# ${finalUrl}\n\n\`\`\`json\n${JSON.stringify(JSON.parse(text), null, 2).slice(0, MAX_MARKDOWN_CHARS)}\n\`\`\``
+      }
+      catch {
+        markdown = `# ${finalUrl}\n\n\`\`\`\n${text.slice(0, MAX_MARKDOWN_CHARS)}\n\`\`\``
+      }
+    }
+    else {
+      markdown = `# ${finalUrl}\n\n${text.slice(0, MAX_MARKDOWN_CHARS)}`
+    }
     return { url: finalUrl, markdown }
   }
   finally { clearTimeout(timer) }
@@ -132,32 +255,41 @@ async function fetchBuiltin(url: string): Promise<{ url: string, markdown: strin
  * 对理解内容无用的元数据，让同样的字符预算能装下更多正文。
  */
 function formatDiscourseTopicJson(raw: string): string | null {
-  let parsed: any
+  let parsed: unknown
   try {
     parsed = JSON.parse(raw)
   }
   catch {
     return null
   }
-  const posts = parsed?.post_stream?.posts
+  if (!parsed || typeof parsed !== 'object')
+    return null
+
+  // 这是外部服务返回的 JSON：逐层守卫而不是断言，避免上游改结构时
+  // 在深层属性访问上抛 TypeError（那会被上层当成抓取失败）。
+  const topic = parsed as Record<string, unknown>
+  const postStream = topic.post_stream as Record<string, unknown> | undefined
+  const posts = postStream?.posts
   if (!Array.isArray(posts) || posts.length === 0)
     return null
 
-  const title = typeof parsed.title === 'string' ? parsed.title : ''
+  const title = typeof topic.title === 'string' ? topic.title : ''
   const lines: string[] = []
   if (title)
     lines.push(`# ${title}`, '')
 
-  for (const post of posts) {
+  for (const entry of posts) {
+    const post = entry as Record<string, unknown>
     const postNumber = post.post_number ?? '?'
-    const author = post.username || post.name || 'unknown'
+    const author = (typeof post.username === 'string' && post.username)
+      || (typeof post.name === 'string' && post.name)
+      || 'unknown'
     const createdAt = typeof post.created_at === 'string' ? post.created_at.slice(0, 10) : ''
     lines.push(`## #${postNumber} — ${author}${createdAt ? ` (${createdAt})` : ''}`)
 
     // `raw` 是作者原始 markdown，优先用它；老帖 / 已编辑帖可能只有 `cooked` HTML。
-    const body = typeof post.raw === 'string' && post.raw.trim()
-      ? post.raw
-      : stripHtmlToText(String(post.cooked ?? ''))
+    const rawBody = typeof post.raw === 'string' ? post.raw : ''
+    const body = rawBody.trim() ? rawBody : stripHtmlToText(String(post.cooked ?? ''))
     lines.push(body.trim(), '')
   }
 
@@ -302,11 +434,7 @@ function decodeDuckDuckGoHref(href: string): string {
   }
 }
 
-// ── Search: multi-provider dispatch ──
-
-import type { SearchProviderEntry, WebToolsConfig } from '../../data/defaults'
-
-export type SearchRef = { title: string, url: string, chunk: string }
+export interface SearchRef { title: string, url: string, chunk: string }
 
 /**
  * DuckDuckGo 抓取会返回 202 + 反爬挑战页（"Select all squares containing a duck"）。
@@ -338,13 +466,16 @@ async function searchDuckDuckGo(searchTerm: string, max: number): Promise<Search
     throw new Error('DDG search blocked by anti-bot challenge; configure an API search provider instead')
   const refs: SearchRef[] = []
   const regex = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]{0,1200}?(?:<a[^>]+class="result__snippet"[^>]*>|<div[^>]+class="result__snippet"[^>]*>)([\s\S]*?)(?:<\/a>|<\/div>)/gi
-  let match: RegExpExecArray | null
-  while ((match = regex.exec(html)) && refs.length < max) {
+  // exec 在循环条件里取下一个匹配 —— 把赋值摊到循环体外，避免
+  // 条件表达式里的副作用（no-cond-assign 拦的正是这种读不出意图的写法）。
+  let match: RegExpExecArray | null = regex.exec(html)
+  while (match && refs.length < max) {
     const href = decodeDuckDuckGoHref(match[1])
     const title = stripTags(match[2])
     const chunk = stripTags(match[3]).slice(0, 400)
     if (title && href)
       refs.push({ title, url: href, chunk })
+    match = regex.exec(html)
   }
   return refs
 }
@@ -494,8 +625,9 @@ export async function performWebSearch(searchTerm: string, config?: WebToolsConf
     const merged: SearchRef[] = []
     let lastError: unknown = null
     for (const r of settled) {
-      if (r.status === 'fulfilled')
+      if (r.status === 'fulfilled') {
         merged.push(...r.value)
+      }
       else {
         lastError = r.reason
         logger.warn({ error: (r.reason as Error)?.message }, '[WEB] parallel search provider failed')

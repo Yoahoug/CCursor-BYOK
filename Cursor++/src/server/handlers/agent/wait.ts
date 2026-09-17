@@ -1,22 +1,23 @@
-import type { AgentServerMessage } from '../../gen/agent_v1_pb';
-import { AGENT_HEARTBEAT_INTERVAL_MS } from './constants';
-import { waitForInteractionResponse, waitForMessageMatching, type AgentSession } from './session';
-import { heartbeat } from './stream';
+import type { AgentServerMessage } from '../../gen/agent_v1_pb'
+import type { AgentSession } from './session'
+import { AGENT_HEARTBEAT_INTERVAL_MS } from './constants'
+import { waitForInteractionResponse, waitForMessageMatching } from './session'
+import { heartbeat } from './stream'
 
 export class AgentRunAbortedError extends Error {
-    readonly execMessageId?: number;
-    readonly clientStackTrace?: string;
+  readonly execMessageId?: number
+  readonly clientStackTrace?: string
 
-    constructor(message: string, opts?: { execMessageId?: number; clientStackTrace?: string }) {
-        super(message);
-        this.name = 'AgentRunAbortedError';
-        this.execMessageId = opts?.execMessageId;
-        this.clientStackTrace = opts?.clientStackTrace;
-    }
+  constructor(message: string, opts?: { execMessageId?: number, clientStackTrace?: string }) {
+    super(message)
+    this.name = 'AgentRunAbortedError'
+    this.execMessageId = opts?.execMessageId
+    this.clientStackTrace = opts?.clientStackTrace
+  }
 }
 
 export function isAgentRunAbortedError(error: unknown): error is AgentRunAbortedError {
-    return error instanceof AgentRunAbortedError;
+  return error instanceof AgentRunAbortedError
 }
 
 /**
@@ -27,65 +28,69 @@ export function isAgentRunAbortedError(error: unknown): error is AgentRunAborted
  * round 边界。中断粒度因此收敛到单个事件而非整轮。
  */
 export function throwIfSessionCancelled(session: AgentSession): void {
-    if (session.cancelledReason === undefined)
-        return;
-    throw new AgentRunAbortedError(`client cancelled the run: ${session.cancelledReason}`);
+  if (session.cancelledReason === undefined)
+    return
+  throw new AgentRunAbortedError(`client cancelled the run: ${session.cancelledReason}`)
 }
 
 export function isExecClientMessageForId(msg: Record<string, unknown>, execMessageId: number): boolean {
-    return 'execClientMessage' in msg
-        && Number((msg.execClientMessage as Record<string, unknown>).id) === execMessageId;
+  return 'execClientMessage' in msg
+    && Number((msg.execClientMessage as Record<string, unknown>).id) === execMessageId
 }
 
 export function isExecStreamCloseForId(msg: Record<string, unknown>, execMessageId: number): boolean {
-    if (!('execClientControlMessage' in msg)) return false;
-    const ctrl = msg.execClientControlMessage as Record<string, unknown>;
-    const streamClose = ctrl.streamClose as Record<string, unknown> | undefined;
-    return Number(streamClose?.id) === execMessageId;
+  if (!('execClientControlMessage' in msg))
+    return false
+  const ctrl = msg.execClientControlMessage as Record<string, unknown>
+  const streamClose = ctrl.streamClose as Record<string, unknown> | undefined
+  return Number(streamClose?.id) === execMessageId
 }
 
 function getExecThrowForId(msg: Record<string, unknown>, execMessageId: number): Record<string, unknown> | null {
-    if (!('execClientControlMessage' in msg)) return null;
-    const ctrl = msg.execClientControlMessage as Record<string, unknown>;
-    const thrown = ctrl.throw as Record<string, unknown> | undefined;
-    if (!thrown) return null;
-    return Number(thrown.id) === execMessageId ? thrown : null;
+  if (!('execClientControlMessage' in msg))
+    return null
+  const ctrl = msg.execClientControlMessage as Record<string, unknown>
+  const thrown = ctrl.throw as Record<string, unknown> | undefined
+  if (!thrown)
+    return null
+  return Number(thrown.id) === execMessageId ? thrown : null
 }
 
 function buildExecAbortError(execThrow: Record<string, unknown>, execMessageId: number): AgentRunAbortedError {
-    const error = typeof execThrow.error === 'string' && execThrow.error.trim().length > 0
-        ? execThrow.error
-        : 'exec client aborted the current run';
-    const clientStackTrace = typeof execThrow.stackTrace === 'string' ? execThrow.stackTrace : undefined;
-    return new AgentRunAbortedError(error, { execMessageId, clientStackTrace });
+  const error = typeof execThrow.error === 'string' && execThrow.error.trim().length > 0
+    ? execThrow.error
+    : 'exec client aborted the current run'
+  const clientStackTrace = typeof execThrow.stackTrace === 'string' ? execThrow.stackTrace : undefined
+  return new AgentRunAbortedError(error, { execMessageId, clientStackTrace })
 }
 
 export async function waitForExecMessageMatching(
-    session: AgentSession,
-    execMessageId: number,
-    predicate: (msg: Record<string, unknown>) => boolean,
-    timeoutMs: number | null,
+  session: AgentSession,
+  execMessageId: number,
+  predicate: (msg: Record<string, unknown>) => boolean,
+  timeoutMs: number | null,
 ): Promise<Record<string, unknown> | null> {
-    const msg = await waitForMessageMatching(
-        session,
-        (candidate) => predicate(candidate) || !!getExecThrowForId(candidate, execMessageId),
-        timeoutMs,
-    );
-    // 客户端中断 (cancelAction) 会让 waitForMessageMatching 立即返回 null。
-    // 转成 AgentRunAbortedError,与 exec throw 走同一条干净收尾路径 ——
-    // 否则工具会拿着 null 结果继续往下跑。
-    throwIfSessionCancelled(session);
-    if (!msg) return null;
+  const msg = await waitForMessageMatching(
+    session,
+    candidate => predicate(candidate) || !!getExecThrowForId(candidate, execMessageId),
+    timeoutMs,
+  )
+  // 客户端中断 (cancelAction) 会让 waitForMessageMatching 立即返回 null。
+  // 转成 AgentRunAbortedError,与 exec throw 走同一条干净收尾路径 ——
+  // 否则工具会拿着 null 结果继续往下跑。
+  throwIfSessionCancelled(session)
+  if (!msg)
+    return null
 
-    const execThrow = getExecThrowForId(msg, execMessageId);
-    if (execThrow) {
-        throw buildExecAbortError(execThrow, execMessageId);
-    }
-    return msg;
+  const execThrow = getExecThrowForId(msg, execMessageId)
+  if (execThrow) {
+    throw buildExecAbortError(execThrow, execMessageId)
+  }
+  return msg
 }
 
 function delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 /**
@@ -95,131 +100,136 @@ function delay(ms: number): Promise<void> {
  *   const response = yield* waitForPromiseWithHeartbeat(promise)
  */
 export async function* waitForPromiseWithHeartbeat<T>(
-    promise: Promise<T>,
-    intervalMs = AGENT_HEARTBEAT_INTERVAL_MS,
+  promise: Promise<T>,
+  intervalMs = AGENT_HEARTBEAT_INTERVAL_MS,
 ): AsyncGenerator<AgentServerMessage, T, void> {
-    let settled = false;
-    let result: T;
-    let failure: unknown;
+  let settled = false
+  let result: T
+  let failure: unknown
 
-    const wrapped = promise.then(
-        (value) => {
-            settled = true;
-            result = value;
-        },
-        (error) => {
-            settled = true;
-            failure = error;
-        },
-    );
+  const wrapped = promise.then(
+    (value) => {
+      settled = true
+      result = value
+    },
+    (error) => {
+      settled = true
+      failure = error
+    },
+  )
 
-    while (!settled) {
-        const raced = await Promise.race([
-            wrapped.then(() => 'done' as const),
-            delay(intervalMs).then(() => 'tick' as const),
-        ]);
-        if (raced === 'tick' && !settled) {
-            yield heartbeat();
-        }
-    }
+  // settled 由上面 wrapped 的两个回调异步赋值。这里刻意不把它写进循环条件：
+  // 条件里的变量不参与循环体求值，读起来像"永不退出"（no-unmodified-loop-condition
+  // 拦的正是这种情况）。改为显式 break，语义完全一致。
+  for (;;) {
+    const raced = await Promise.race([
+      wrapped.then(() => 'done' as const),
+      delay(intervalMs).then(() => 'tick' as const),
+    ])
+    if (settled)
+      break
+    if (raced === 'tick')
+      yield heartbeat()
+  }
 
-    if (failure !== undefined) throw failure;
-    return result!;
+  if (failure !== undefined)
+    throw failure
+  return result!
 }
 
 export async function* waitForMessageMatchingWithHeartbeat(
-    session: AgentSession,
-    predicate: (msg: Record<string, unknown>) => boolean,
-    timeoutMs: number | null = null,
-    intervalMs = AGENT_HEARTBEAT_INTERVAL_MS,
+  session: AgentSession,
+  predicate: (msg: Record<string, unknown>) => boolean,
+  timeoutMs: number | null = null,
+  intervalMs = AGENT_HEARTBEAT_INTERVAL_MS,
 ): AsyncGenerator<AgentServerMessage, Record<string, unknown> | null, void> {
-    return yield* waitForPromiseWithHeartbeat(
-        waitForMessageMatching(session, predicate, timeoutMs),
-        intervalMs,
-    );
+  return yield* waitForPromiseWithHeartbeat(
+    waitForMessageMatching(session, predicate, timeoutMs),
+    intervalMs,
+  )
 }
 
 export async function* waitForInteractionResponseWithHeartbeat(
-    session: AgentSession,
-    id: number,
-    expectedCase: string,
-    timeoutMs: number | null = null,
-    intervalMs = AGENT_HEARTBEAT_INTERVAL_MS,
+  session: AgentSession,
+  id: number,
+  expectedCase: string,
+  timeoutMs: number | null = null,
+  intervalMs = AGENT_HEARTBEAT_INTERVAL_MS,
 ): AsyncGenerator<AgentServerMessage, Record<string, unknown> | null, void> {
-    return yield* waitForPromiseWithHeartbeat(
-        waitForInteractionResponse(session, id, expectedCase, timeoutMs),
-        intervalMs,
-    );
+  return yield* waitForPromiseWithHeartbeat(
+    waitForInteractionResponse(session, id, expectedCase, timeoutMs),
+    intervalMs,
+  )
 }
 
 export async function* waitForExecClientMessageWithHeartbeat(
-    session: AgentSession,
-    execMessageId: number,
-    timeoutMs: number | null = null,
-    intervalMs = AGENT_HEARTBEAT_INTERVAL_MS,
+  session: AgentSession,
+  execMessageId: number,
+  timeoutMs: number | null = null,
+  intervalMs = AGENT_HEARTBEAT_INTERVAL_MS,
 ): AsyncGenerator<AgentServerMessage, Record<string, unknown> | null, void> {
-    return yield* waitForPromiseWithHeartbeat(
-        waitForExecMessageMatching(
-            session,
-            execMessageId,
-            (msg) => isExecClientMessageForId(msg, execMessageId),
-            timeoutMs,
-        ),
-        intervalMs,
-    );
+  return yield* waitForPromiseWithHeartbeat(
+    waitForExecMessageMatching(
+      session,
+      execMessageId,
+      msg => isExecClientMessageForId(msg, execMessageId),
+      timeoutMs,
+    ),
+    intervalMs,
+  )
 }
 
 export async function* waitForExecStreamCloseWithHeartbeat(
-    session: AgentSession,
-    execMessageId: number,
-    timeoutMs: number | null = null,
-    intervalMs = AGENT_HEARTBEAT_INTERVAL_MS,
+  session: AgentSession,
+  execMessageId: number,
+  timeoutMs: number | null = null,
+  intervalMs = AGENT_HEARTBEAT_INTERVAL_MS,
 ): AsyncGenerator<AgentServerMessage, Record<string, unknown> | null, void> {
-    return yield* waitForPromiseWithHeartbeat(
-        waitForExecMessageMatching(
-            session,
-            execMessageId,
-            (msg) => isExecStreamCloseForId(msg, execMessageId),
-            timeoutMs,
-        ),
-        intervalMs,
-    );
+  return yield* waitForPromiseWithHeartbeat(
+    waitForExecMessageMatching(
+      session,
+      execMessageId,
+      msg => isExecStreamCloseForId(msg, execMessageId),
+      timeoutMs,
+    ),
+    intervalMs,
+  )
 }
 
 /** 等待 exec result + stream close（Promise 形式，用于 Promise.all 并发） */
 export async function awaitExecResultAndClose(
-    session: AgentSession,
-    execMessageId: number,
-    timeoutMs: number | null = null,
+  session: AgentSession,
+  execMessageId: number,
+  timeoutMs: number | null = null,
 ): Promise<Record<string, unknown> | null> {
-    const execResult = await waitForExecMessageMatching(
-        session,
-        execMessageId,
-        msg => isExecClientMessageForId(msg, execMessageId),
-        timeoutMs,
-    );
-    await waitForExecMessageMatching(
-        session,
-        execMessageId,
-        msg => isExecStreamCloseForId(msg, execMessageId),
-        5_000,
-    ).catch(() => {});
-    return execResult;
+  const execResult = await waitForExecMessageMatching(
+    session,
+    execMessageId,
+    msg => isExecClientMessageForId(msg, execMessageId),
+    timeoutMs,
+  )
+  await waitForExecMessageMatching(
+    session,
+    execMessageId,
+    msg => isExecStreamCloseForId(msg, execMessageId),
+    5_000,
+  ).catch(() => {})
+  return execResult
 }
 
 export async function* waitForShellExecEventWithHeartbeat(
-    session: AgentSession,
-    execMessageId: number,
-    timeoutMs: number | null = null,
-    intervalMs = AGENT_HEARTBEAT_INTERVAL_MS,
+  session: AgentSession,
+  execMessageId: number,
+  timeoutMs: number | null = null,
+  intervalMs = AGENT_HEARTBEAT_INTERVAL_MS,
 ): AsyncGenerator<AgentServerMessage, Record<string, unknown> | null, void> {
-    return yield* waitForPromiseWithHeartbeat(
-        waitForExecMessageMatching(
-            session,
-            execMessageId,
-            (msg) => isExecClientMessageForId(msg, execMessageId) || isExecStreamCloseForId(msg, execMessageId),
-            timeoutMs,
-        ),
-        intervalMs,
-    );
+  return yield* waitForPromiseWithHeartbeat(
+    waitForExecMessageMatching(
+      session,
+      execMessageId,
+      msg => isExecClientMessageForId(msg, execMessageId) || isExecStreamCloseForId(msg, execMessageId),
+      timeoutMs,
+    ),
+    intervalMs,
+  )
 }

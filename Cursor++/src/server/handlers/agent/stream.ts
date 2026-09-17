@@ -1,4 +1,5 @@
-import type { AgentServerMessage } from '../../gen/agent_v1_pb'
+import type { GenMessage } from '@bufbuild/protobuf/codegenv2'
+import type { AgentServerMessage, SimulatedMsgReason } from '../../gen/agent_v1_pb'
 import type { LLMStreamEvent } from '../llm/types'
 /**
  * Agent 流翻译器
@@ -16,12 +17,12 @@ import type { LLMStreamEvent } from '../llm/types'
  * done                     → interactionUpdate.stepCompleted + turnEnded
  */
 import { create } from '@bufbuild/protobuf'
-import type { GenMessage } from '@bufbuild/protobuf/codegenv2'
 import {
   AgentMode,
   AgentServerMessageSchema,
   AskQuestionToolCallSchema,
   AwaitToolCallSchema,
+  CommunicateUpdateToolCallSchema,
   ConversationStateStructureSchema,
   CreatePlanToolCallSchema,
   DeleteToolCallSchema,
@@ -42,8 +43,8 @@ import {
   PartialToolCallUpdateSchema,
   ReadLintsToolCallSchema,
   ReadMcpResourceToolCallSchema,
-  ReadToolCallSchema,
   ReadTodosToolCallSchema,
+  ReadToolCallSchema,
   SemSearchToolCallSchema,
   ShellToolCallDeltaSchema,
   ShellToolCallSchema,
@@ -56,19 +57,17 @@ import {
   ToolCallSchema,
   ToolCallStartedUpdateSchema,
   TrackedGitRepoSchema,
+  UpdateTodosToolCallSchema,
   UserMessageAppendedUpdateSchema,
   UserMessageSchema,
-  SimulatedMsgReason,
-  UpdateTodosToolCallSchema,
   WebFetchToolCallSchema,
   WebSearchToolCallSchema,
-  CommunicateUpdateToolCallSchema,
 } from '../../gen/agent_v1_pb'
 import { logger, streamLogger } from '../../logger'
 import { AGENT_HEARTBEAT_INTERVAL_MS, IDLE_HINT_AFTER_MS } from './constants'
 import { mapPartialToolName } from './tools'
 
-type BreakdownCategoryInit = { id: string, label: string, estimatedTokens: number }
+interface BreakdownCategoryInit { id: string, label: string, estimatedTokens: number }
 
 function normalizeContextWindowMaxTokens(maxTokens: number): number {
   const safe = Math.max(1, Math.round(maxTokens))
@@ -724,8 +723,13 @@ export async function* translateStream(
 
     const sideFrames = onEvent?.(event)
     if (sideFrames) {
-      if (Array.isArray(sideFrames)) { for (const f of sideFrames) yield f }
-      else yield sideFrames
+      if (Array.isArray(sideFrames)) {
+        for (const f of sideFrames)
+          yield f
+      }
+      else {
+        yield sideFrames
+      }
     }
 
     switch (event.type) {

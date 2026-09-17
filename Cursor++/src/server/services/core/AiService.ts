@@ -26,20 +26,20 @@
 import type { ConnectRouter } from '@connectrpc/connect'
 import { create } from '@bufbuild/protobuf'
 import {
-  AiService,
-  AvailableModelsResponse_FeatureModelConfigSchema,
-  AvailableModelsResponse_ModelPickerDisplayConfigurationSchema,
-  AvailableModelsResponse_ModelPickerDisplayConfiguration_RoutedModelViewConfigSchema,
-  AvailableModelsResponseSchema,
-} from '../../gen/aiserver_v1_pb'
-import {
   addKnowledgeItem,
   listKnowledgeItems,
   removeKnowledgeItem,
   updateKnowledgeItem,
 } from '../../config/knowledgeBaseStore'
-import { buildByokAvailableModels } from '../../handlers/models/byokModelBuilder'
 import { flattenModels } from '../../config/providersStore'
+import {
+  AiService,
+  AvailableModelsResponse_FeatureModelConfigSchema,
+  AvailableModelsResponse_ModelPickerDisplayConfiguration_RoutedModelViewConfigSchema,
+  AvailableModelsResponse_ModelPickerDisplayConfigurationSchema,
+  AvailableModelsResponseSchema,
+} from '../../gen/aiserver_v1_pb'
+import { buildByokAvailableModels } from '../../handlers/models/byokModelBuilder'
 import { logger } from '../../logger'
 
 /**
@@ -93,7 +93,8 @@ export default (router: ConnectRouter) => {
     getDefaultModel: async () => {
       const all = flattenModels().filter(x => x.model.defaultOn !== false)
       const first = all[0]
-      if (!first) return {}
+      if (!first)
+        return {}
       const thinkingModel = all.find(x => x.model.thinking)
       return {
         model: first.model.id,

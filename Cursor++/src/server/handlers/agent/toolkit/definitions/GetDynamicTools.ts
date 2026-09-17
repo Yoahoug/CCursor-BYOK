@@ -1,5 +1,5 @@
-import { str } from '../shared';
-import type { ToolRegistryEntry } from '../types';
+import type { ToolRegistryEntry } from '../types'
+import { str } from '../shared'
 
 /**
  * GetDynamicTools — dynamic namespace 的 discovery meta 工具
@@ -22,74 +22,74 @@ Modes:
 4. {"namespace":"<id>","pattern":"<regex>"}: searches tools within one namespace.
 5. No arguments: returns the full catalog.
 
-Pattern-search and catalog results shorten long descriptions; namespace and single-tool lookups always return the complete description. Always inspect a tool's schema here before invoking it with CallDynamicTool.`;
+Pattern-search and catalog results shorten long descriptions; namespace and single-tool lookups always return the complete description. Always inspect a tool's schema here before invoking it with CallDynamicTool.`
 
 const PROPERTIES = {
-    namespace: {
-        type: 'string',
-        description: 'Identifier of the dynamic tool namespace to inspect.',
-    },
-    toolName: {
-        type: 'string',
-        description: 'Name of a single tool to look up within the namespace.',
-    },
-    pattern: {
-        type: 'string',
-        maxLength: 256,
-        description: 'Regular expression (max 256 characters) used to search namespace and tool names.',
-    },
-};
+  namespace: {
+    type: 'string',
+    description: 'Identifier of the dynamic tool namespace to inspect.',
+  },
+  toolName: {
+    type: 'string',
+    description: 'Name of a single tool to look up within the namespace.',
+  },
+  pattern: {
+    type: 'string',
+    maxLength: 256,
+    description: 'Regular expression (max 256 characters) used to search namespace and tool names.',
+  },
+}
 
 // 五种模式全部合法,包括无参数调用 —— 故 required 为空
 const ANTHROPIC = {
-    name: 'GetDynamicTools',
-    description: DESCRIPTION,
-    inputSchema: { type: 'object', properties: PROPERTIES, required: [] as string[] },
-};
+  name: 'GetDynamicTools',
+  description: DESCRIPTION,
+  inputSchema: { type: 'object', properties: PROPERTIES, required: [] as string[] },
+}
 
 const OPENAI = {
-    name: 'GetDynamicTools',
-    description: DESCRIPTION,
-    inputSchema: { type: 'object', properties: PROPERTIES, required: [] as string[] },
-};
+  name: 'GetDynamicTools',
+  description: DESCRIPTION,
+  inputSchema: { type: 'object', properties: PROPERTIES, required: [] as string[] },
+}
 
 const GEMINI = {
-    name: 'GetDynamicTools',
-    description: DESCRIPTION,
-    inputSchema: {
-        type: 'OBJECT',
-        properties: {
-            namespace: { type: 'STRING', description: PROPERTIES.namespace.description },
-            toolName: { type: 'STRING', description: PROPERTIES.toolName.description },
-            pattern: { type: 'STRING', description: PROPERTIES.pattern.description },
-        },
-        required: [] as string[],
+  name: 'GetDynamicTools',
+  description: DESCRIPTION,
+  inputSchema: {
+    type: 'OBJECT',
+    properties: {
+      namespace: { type: 'STRING', description: PROPERTIES.namespace.description },
+      toolName: { type: 'STRING', description: PROPERTIES.toolName.description },
+      pattern: { type: 'STRING', description: PROPERTIES.pattern.description },
     },
-};
+    required: [] as string[],
+  },
+}
 
 export const GetDynamicToolsTool: ToolRegistryEntry = {
-    canonicalName: 'GetDynamicTools',
-    aliases: ['GetDynamicTools', 'get_dynamic_tools', 'GetMcpTools', 'get_mcp_tools'],
-    cursorToolType: 'getMcpToolsToolCall',
-    // 结果由服务端自产,不下发 exec args —— 真正的取数走 mcpStateExecArgs,
-    // 见 handlers/agent/mcpState.ts。
-    execArgsType: null,
-    llmToolByProvider: {
-        anthropic: ANTHROPIC,
-        openai: OPENAI,
-        gemini: GEMINI,
-    },
-    // proto GetMcpToolsArgs { server, tool_name, pattern, tool_call_id }
-    buildStartedArgs: (input, callId) => ({
-        server: str(input.namespace ?? input.server),
-        toolName: str(input.toolName ?? input.tool_name),
-        pattern: str(input.pattern),
-        toolCallId: callId,
-    }),
-    buildExecArgs: (input, callId) => ({
-        server: str(input.namespace ?? input.server),
-        toolName: str(input.toolName ?? input.tool_name),
-        pattern: str(input.pattern),
-        toolCallId: callId,
-    }),
-};
+  canonicalName: 'GetDynamicTools',
+  aliases: ['GetDynamicTools', 'get_dynamic_tools', 'GetMcpTools', 'get_mcp_tools'],
+  cursorToolType: 'getMcpToolsToolCall',
+  // 结果由服务端自产,不下发 exec args —— 真正的取数走 mcpStateExecArgs,
+  // 见 handlers/agent/mcpState.ts。
+  execArgsType: null,
+  llmToolByProvider: {
+    anthropic: ANTHROPIC,
+    openai: OPENAI,
+    gemini: GEMINI,
+  },
+  // proto GetMcpToolsArgs { server, tool_name, pattern, tool_call_id }
+  buildStartedArgs: (input, callId) => ({
+    server: str(input.namespace ?? input.server),
+    toolName: str(input.toolName ?? input.tool_name),
+    pattern: str(input.pattern),
+    toolCallId: callId,
+  }),
+  buildExecArgs: (input, callId) => ({
+    server: str(input.namespace ?? input.server),
+    toolName: str(input.toolName ?? input.tool_name),
+    pattern: str(input.pattern),
+    toolCallId: callId,
+  }),
+}

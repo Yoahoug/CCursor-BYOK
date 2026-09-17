@@ -7,10 +7,14 @@ import type {
   ChatCompletionMessageToolCall,
   ChatCompletionToolMessageParam,
 } from 'openai/resources/chat/completions'
+import type { ResponseInput, ResponseInputItem } from 'openai/resources/responses/responses'
 import type { ProviderType } from '../../data/defaults'
 import type { SemanticTurn } from './semanticConversation'
 import type { StoredMessage } from './storedTranscript'
 import type { LLMContentBlock, LLMMessage, LLMTool } from './types'
+
+// ── Responses API 编码 ──
+
 import { normalizeStoredTranscript as normalizeSemanticTranscript } from './semanticConversation'
 
 export interface ProviderConversationCodec {
@@ -464,7 +468,8 @@ export function encodeGeminiRequestMessages(messages: LLMMessage[]): {
     const prevIsAllFuncResp = prev?.role === 'user' && prevParts.length > 0 && prevParts.every(p => 'functionResponse' in p)
     if (isAllFuncResp && prevIsAllFuncResp && prev) {
       prev.parts = [...prevParts, ...cParts]
-    } else {
+    }
+    else {
       contents.push(c)
     }
   }
@@ -607,10 +612,6 @@ export const anthropicConversationCodec: ProviderConversationCodec = new Anthrop
 export const openAIChatConversationCodec: ProviderConversationCodec = new OpenAIChatConversationCodec()
 export const openAIResponsesConversationCodec: ProviderConversationCodec = new OpenAIResponsesConversationCodec()
 export const geminiConversationCodec: ProviderConversationCodec = new GeminiConversationCodec()
-
-// ── Responses API 编码 ──
-
-import type { ResponseInput, ResponseInputItem } from 'openai/resources/responses/responses'
 
 export interface ResponsesEncodedInput {
   instructions: string | undefined

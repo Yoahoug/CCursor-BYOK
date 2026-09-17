@@ -1,9 +1,9 @@
-import { arr, bool } from '../shared';
-import type { ToolRegistryEntry } from '../types';
+import type { ToolRegistryEntry } from '../types'
+import { arr, bool } from '../shared'
 
 const ANTHROPIC = {
-    name: 'TodoWrite',
-    description: `Use this tool to create and manage a structured task list for your current coding session. This helps track progress, organize complex tasks, and demonstrate thoroughness.
+  name: 'TodoWrite',
+  description: `Use this tool to create and manage a structured task list for your current coding session. This helps track progress, organize complex tasks, and demonstrate thoroughness.
 
 Note: Other than when first creating todos, don't tell the user you're updating todos, just do it.
 
@@ -126,114 +126,114 @@ Skip for:
   - Batch todo updates with other tool calls for better latency and lower costs for the user
 
 When in doubt, use this tool. Proactive task management demonstrates attentiveness and ensures complete requirements.`,
-    inputSchema: {
-            "type": "object",
-            "required": [
-                    "todos",
-                    "merge"
-            ],
-            "properties": {
-                    "todos": {
-                            "type": "array",
-                            "minItems": 2,
-                            "description": "Array of TODO items to update or create",
-                            "items": {
-                                    "type": "object",
-                                    "required": [
-                                            "id",
-                                            "content",
-                                            "status"
-                                    ],
-                                    "properties": {
-                                            "id": {
-                                                    "type": "string",
-                                                    "description": "Unique identifier for the TODO item"
-                                            },
-                                            "content": {
-                                                    "type": "string",
-                                                    "description": "The description/content of the todo item"
-                                            },
-                                            "status": {
-                                                    "type": "string",
-                                                    "enum": [
-                                                            "pending",
-                                                            "in_progress",
-                                                            "completed",
-                                                            "cancelled"
-                                                    ],
-                                                    "description": "The current status of the TODO item"
-                                            }
-                                    }
-                            }
-                    },
-                    "merge": {
-                            "type": "boolean",
-                            "description": "Whether to merge the todos with the existing todos. If true, the todos will be merged into the existing todos based on the id field. You can leave unchanged properties undefined. If false, the new todos will replace the existing todos."
-                    }
-            }
+  inputSchema: {
+    type: 'object',
+    required: [
+      'todos',
+      'merge',
+    ],
+    properties: {
+      todos: {
+        type: 'array',
+        minItems: 2,
+        description: 'Array of TODO items to update or create',
+        items: {
+          type: 'object',
+          required: [
+            'id',
+            'content',
+            'status',
+          ],
+          properties: {
+            id: {
+              type: 'string',
+              description: 'Unique identifier for the TODO item',
+            },
+            content: {
+              type: 'string',
+              description: 'The description/content of the todo item',
+            },
+            status: {
+              type: 'string',
+              enum: [
+                'pending',
+                'in_progress',
+                'completed',
+                'cancelled',
+              ],
+              description: 'The current status of the TODO item',
+            },
+          },
+        },
+      },
+      merge: {
+        type: 'boolean',
+        description: 'Whether to merge the todos with the existing todos. If true, the todos will be merged into the existing todos based on the id field. You can leave unchanged properties undefined. If false, the new todos will replace the existing todos.',
+      },
     },
-};
+  },
+}
 
 const OPENAI = {
-    name: 'TodoWrite',
-    description: `Updates the todo list. Provide a list of todo items, each with an id, content, and status. Provide merge=true to update existing tasks.
+  name: 'TodoWrite',
+  description: `Updates the todo list. Provide a list of todo items, each with an id, content, and status. Provide merge=true to update existing tasks.
 
 ### Guidelines
 - At most one task can be in_progress at a time.
 - Cancel tasks that are no longer needed immediately.
 - Prefer creating the first todo as in_progress
 - Batch todo updates with other tool calls in parallel`,
-    inputSchema: {
-            "type": "object",
-            "properties": {
-                    "merge": {
-                            "type": "boolean",
-                            "description": "Whether to merge the todos with the existing todos. If true, the todos will be merged into the existing todos based on the id field. You can leave unchanged properties undefined. If false, the new todos will replace the existing todos."
-                    },
-                    "todos": {
-                            "type": "array",
-                            "description": "Array of TODO items to update or create",
-                            "minItems": 2,
-                            "items": {
-                                    "type": "object",
-                                    "properties": {
-                                            "id": {
-                                                    "type": "string",
-                                                    "description": "Unique identifier for the TODO item"
-                                            },
-                                            "content": {
-                                                    "type": "string",
-                                                    "description": "The description/content of the todo item"
-                                            },
-                                            "status": {
-                                                    "type": "string",
-                                                    "description": "The current status of the TODO item",
-                                                    "enum": [
-                                                            "pending",
-                                                            "in_progress",
-                                                            "completed",
-                                                            "cancelled"
-                                                    ]
-                                            }
-                                    },
-                                    "required": [
-                                            "id",
-                                            "content",
-                                            "status"
-                                    ]
-                            }
-                    }
+  inputSchema: {
+    type: 'object',
+    properties: {
+      merge: {
+        type: 'boolean',
+        description: 'Whether to merge the todos with the existing todos. If true, the todos will be merged into the existing todos based on the id field. You can leave unchanged properties undefined. If false, the new todos will replace the existing todos.',
+      },
+      todos: {
+        type: 'array',
+        description: 'Array of TODO items to update or create',
+        minItems: 2,
+        items: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'string',
+              description: 'Unique identifier for the TODO item',
             },
-            "required": [
-                    "merge",
-                    "todos"
-            ]
+            content: {
+              type: 'string',
+              description: 'The description/content of the todo item',
+            },
+            status: {
+              type: 'string',
+              description: 'The current status of the TODO item',
+              enum: [
+                'pending',
+                'in_progress',
+                'completed',
+                'cancelled',
+              ],
+            },
+          },
+          required: [
+            'id',
+            'content',
+            'status',
+          ],
+        },
+      },
     },
-};
+    required: [
+      'merge',
+      'todos',
+    ],
+  },
+}
 
 const GEMINI = {
-    name: 'TodoWrite',
-    description: `Use this tool to create and manage a structured task list for your current coding session. This helps track progress, organize complex tasks, and demonstrate thoroughness.
+  name: 'TodoWrite',
+  description: `Use this tool to create and manage a structured task list for your current coding session. This helps track progress, organize complex tasks, and demonstrate thoroughness.
 
 Note: Other than when first creating todos, don't tell the user you're updating todos, just do it.
 
@@ -356,65 +356,65 @@ Skip for:
   - Batch todo updates with other tool calls for better latency and lower costs for the user
 
 When in doubt, use this tool. Proactive task management demonstrates attentiveness and ensures complete requirements.`,
-    inputSchema: {
-            "type": "OBJECT",
-            "properties": {
-                    "merge": {
-                            "type": "BOOLEAN",
-                            "description": "Whether to merge the todos with the existing todos. If true, the todos will be merged into the existing todos based on the id field. You can leave unchanged properties undefined. If false, the new todos will replace the existing todos."
-                    },
-                    "todos": {
-                            "type": "ARRAY",
-                            "description": "Array of TODO items to update or create",
-                            "items": {
-                                    "type": "OBJECT",
-                                    "properties": {
-                                            "content": {
-                                                    "type": "STRING",
-                                                    "description": "The description/content of the todo item"
-                                            },
-                                            "id": {
-                                                    "type": "STRING",
-                                                    "description": "Unique identifier for the TODO item"
-                                            },
-                                            "status": {
-                                                    "type": "STRING",
-                                                    "enum": [
-                                                            "pending",
-                                                            "in_progress",
-                                                            "completed",
-                                                            "cancelled"
-                                                    ],
-                                                    "description": "The current status of the TODO item"
-                                            }
-                                    },
-                                    "required": [
-                                            "id",
-                                            "content",
-                                            "status"
-                                    ]
-                            }
-                    }
+  inputSchema: {
+    type: 'OBJECT',
+    properties: {
+      merge: {
+        type: 'BOOLEAN',
+        description: 'Whether to merge the todos with the existing todos. If true, the todos will be merged into the existing todos based on the id field. You can leave unchanged properties undefined. If false, the new todos will replace the existing todos.',
+      },
+      todos: {
+        type: 'ARRAY',
+        description: 'Array of TODO items to update or create',
+        items: {
+          type: 'OBJECT',
+          properties: {
+            content: {
+              type: 'STRING',
+              description: 'The description/content of the todo item',
             },
-            "required": [
-                    "todos",
-                    "merge"
-            ]
+            id: {
+              type: 'STRING',
+              description: 'Unique identifier for the TODO item',
+            },
+            status: {
+              type: 'STRING',
+              enum: [
+                'pending',
+                'in_progress',
+                'completed',
+                'cancelled',
+              ],
+              description: 'The current status of the TODO item',
+            },
+          },
+          required: [
+            'id',
+            'content',
+            'status',
+          ],
+        },
+      },
     },
-};
+    required: [
+      'todos',
+      'merge',
+    ],
+  },
+}
 
 export const TodoWriteTool: ToolRegistryEntry = {
-    canonicalName: 'TodoWrite',
-    aliases: ["TodoWrite"],
-    cursorToolType: 'updateTodosToolCall',
-    execArgsType: null,
-    llmToolByProvider: {
-        anthropic: ANTHROPIC,
-        openai: OPENAI,
-        gemini: GEMINI,
-    },
-    buildStartedArgs: (input) => ({
-        todos: arr<Record<string, unknown>>(input.todos),
-        merge: bool(input.merge),
-    }),
-};
+  canonicalName: 'TodoWrite',
+  aliases: ['TodoWrite'],
+  cursorToolType: 'updateTodosToolCall',
+  execArgsType: null,
+  llmToolByProvider: {
+    anthropic: ANTHROPIC,
+    openai: OPENAI,
+    gemini: GEMINI,
+  },
+  buildStartedArgs: input => ({
+    todos: arr<Record<string, unknown>>(input.todos),
+    merge: bool(input.merge),
+  }),
+}

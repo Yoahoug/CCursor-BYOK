@@ -1,7 +1,6 @@
 import type { IdeFile, ParsedCursorRule, ParsedRunRequest } from './types'
 import { listKnowledgeItems } from '../../../config/knowledgeBaseStore'
 import { logger } from '../../../logger'
-import { emptyParsed, toBytes } from './shared'
 import {
   categorizeCursorRules,
   isSkillPath,
@@ -10,8 +9,15 @@ import {
   normalizeCursorRule,
   normalizeCustomSubagent,
 } from '../contextCatalog'
+import {
+  normalizeMcpInputSchema,
+  normalizeMcpToolName,
+  parseMcpMetaToolOptions,
+  resolveMcpServerIdentifier,
+} from './mcpNormalization'
+import { emptyParsed, toBytes } from './shared'
 
-type ParsedBackgroundTaskCompletion = {
+interface ParsedBackgroundTaskCompletion {
   taskId: string
   kind: string
   status: string
@@ -23,25 +29,35 @@ type ParsedBackgroundTaskCompletion = {
 
 function normalizeBackgroundTaskKind(value: unknown): string {
   if (typeof value === 'number') {
-    if (value === 1) return 'shell'
-    if (value === 2) return 'subagent'
+    if (value === 1)
+      return 'shell'
+    if (value === 2)
+      return 'subagent'
   }
   const text = String(value ?? '').toLowerCase()
-  if (text.includes('shell')) return 'shell'
-  if (text.includes('subagent')) return 'subagent'
+  if (text.includes('shell'))
+    return 'shell'
+  if (text.includes('subagent'))
+    return 'subagent'
   return 'unspecified'
 }
 
 function normalizeBackgroundTaskStatus(value: unknown): string {
   if (typeof value === 'number') {
-    if (value === 1) return 'success'
-    if (value === 2) return 'error'
-    if (value === 3) return 'aborted'
+    if (value === 1)
+      return 'success'
+    if (value === 2)
+      return 'error'
+    if (value === 3)
+      return 'aborted'
   }
   const text = String(value ?? '').toLowerCase()
-  if (text.includes('success')) return 'success'
-  if (text.includes('error')) return 'error'
-  if (text.includes('abort')) return 'aborted'
+  if (text.includes('success'))
+    return 'success'
+  if (text.includes('error'))
+    return 'error'
+  if (text.includes('abort'))
+    return 'aborted'
   return text || 'unspecified'
 }
 
@@ -110,14 +126,20 @@ export function parseRunRequest(msg: Record<string, unknown>): ParsedRunRequest 
     logger.info({
       count: backgroundTaskCompletions.length,
       completions: backgroundTaskCompletions.map(c => ({
-        taskId: c.taskId, kind: c.kind, status: c.status, detailLen: c.detail?.length ?? 0,
+        taskId: c.taskId,
+        kind: c.kind,
+        status: c.status,
+        detailLen: c.detail?.length ?? 0,
       })),
-    }, '[AGENT] backgroundTaskCompletion parsed');
+    }, '[AGENT] backgroundTaskCompletion parsed')
   }
 
   logger.debug({
     actionKeys: action ? Object.keys(action) : [],
-    isSummarize, isResume, isSubagent, isBackgroundTaskCompletion,
+    isSummarize,
+    isResume,
+    isSubagent,
+    isBackgroundTaskCompletion,
     backgroundTaskCompletionCount: backgroundTaskCompletions.length,
     runRequestTopKeys: Object.keys(runRequest).filter(k => !['conversationState', 'action', 'modelDetails', 'mcpTools'].includes(k)),
   }, '[AGENT] action diagnosis')
@@ -148,8 +170,7 @@ export function parseRunRequest(msg: Record<string, unknown>): ParsedRunRequest 
     })).filter(r => r.toolCallId.length > 0)
   })()
   if (interruptedResolutions.length > 0) {
-    logger.info({ count: interruptedResolutions.length, ids: interruptedResolutions.map(r => r.toolCallId) },
-      '[AGENT] interrupted pending tool call resolutions received')
+    logger.info({ count: interruptedResolutions.length, ids: interruptedResolutions.map(r => r.toolCallId) }, '[AGENT] interrupted pending tool call resolutions received')
   }
   // requestContext: userMessageAction / resumeAction / executePlanAction 都可能带一份。
   // 多轮对话中每一轮都会重新推送,不能假设首轮装载一次就够。
@@ -206,10 +227,10 @@ export function parseRunRequest(msg: Record<string, unknown>): ParsedRunRequest 
     'modelDetails.modelId': modelDetails?.modelId,
     'modelDetails.displayModelId': modelDetails?.displayModelId,
     'requestedModel.modelId': requestedModel?.modelId,
-    hasModelDetails: !!modelDetails,
-    hasRequestedModel: !!requestedModel,
-    modelDetailsKeys: modelDetails ? Object.keys(modelDetails) : [],
-    requestedModelKeys: requestedModel ? Object.keys(requestedModel) : [],
+    'hasModelDetails': !!modelDetails,
+    'hasRequestedModel': !!requestedModel,
+    'modelDetailsKeys': modelDetails ? Object.keys(modelDetails) : [],
+    'requestedModelKeys': requestedModel ? Object.keys(requestedModel) : [],
   }, '[AGENT] model field diagnosis')
   const conversationState = runRequest.conversationState as Record<string, unknown> | undefined
   const prependUserMessagesRaw = (
@@ -238,8 +259,7 @@ export function parseRunRequest(msg: Record<string, unknown>): ParsedRunRequest 
     csEmpty: csKeys.length === 0,
   }, rpmLen > 0
     ? '[SESSION] <<< CS RECV: client sent history (checkpoint roundtrip OK)'
-    : '[SESSION] <<< CS RECV: empty (new session or revert; sqlite will be cleared if stale)',
-  )
+    : '[SESSION] <<< CS RECV: empty (new session or revert; sqlite will be cleared if stale)')
 
   // 提取用户消息附带的图片
   // Cursor 客户端 toJson() 后 oneof 展平为顶层字段:
@@ -621,7 +641,7 @@ export function parseRunRequest(msg: Record<string, unknown>): ParsedRunRequest 
   // subagentModelOverrides (AgentRunRequest field 20) — 用户在 Settings > Subagents 中的模型 override
   // subagentModelOverrides oneof 在 protobuf JSON 中: { subagentType, model?: {modelId,...}, inherit?: bool, disabled?: bool }
   const subagentModelOverridesRaw = (runRequest?.subagentModelOverrides as Array<Record<string, unknown>> | undefined) ?? []
-  const subagentModelOverrides = subagentModelOverridesRaw.map(o => {
+  const subagentModelOverrides = subagentModelOverridesRaw.map((o) => {
     const subagentType = (o.subagentType as string) ?? ''
     if (o.model) {
       const model = o.model as Record<string, unknown>
@@ -685,7 +705,14 @@ export function parseRunRequest(msg: Record<string, unknown>): ParsedRunRequest 
       const blobId = raw instanceof Uint8Array
         ? Buffer.from(raw).toString('utf-8')
         : typeof raw === 'string'
-          ? (() => { try { return Buffer.from(raw, 'base64').toString('utf-8') } catch { return raw } })()
+          ? (() => {
+              try {
+                return Buffer.from(raw, 'base64').toString('utf-8')
+              }
+              catch {
+                return raw
+              }
+            })()
           : ''
       return { blobId }
     }
@@ -963,7 +990,8 @@ export function parseRunRequest(msg: Record<string, unknown>): ParsedRunRequest 
     executePlanFileUri: planFileUri || undefined,
     debugModeConfig: (() => {
       const dmc = requestContext?.debugModeConfig as Record<string, unknown> | undefined
-      if (!dmc) return undefined
+      if (!dmc)
+        return undefined
       return {
         logPath: (dmc.logPath as string) ?? '',
         serverEndpoint: (dmc.serverEndpoint as string) ?? '',
@@ -975,156 +1003,15 @@ export function parseRunRequest(msg: Record<string, unknown>): ParsedRunRequest 
   }
 }
 
-/** 将 requestContext/RequestContextMcpsPart 中的 meta-tool 目录归一成同一形态。 */
-export function parseMcpMetaToolOptions(raw: unknown): ParsedRunRequest['mcpMetaTool'] | undefined {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw))
-    return undefined
-  const options = raw as Record<string, unknown>
-  if (options.enabled !== true)
-    return undefined
-
-  const descriptors = (options.mcpDescriptors as Array<Record<string, unknown>> | undefined) ?? []
-  return {
-    enabled: true,
-    descriptors: descriptors.map(d => ({
-      serverName: typeof d.serverName === 'string' ? d.serverName : '',
-      serverIdentifier: typeof d.serverIdentifier === 'string' ? d.serverIdentifier : '',
-      ...(typeof d.serverUseInstructions === 'string' && d.serverUseInstructions
-        ? { serverUseInstructions: d.serverUseInstructions }
-        : {}),
-      tools: ((d.tools as Array<Record<string, unknown>> | undefined) ?? [])
-        .map(t => ({
-          toolName: typeof t.toolName === 'string' ? t.toolName : '',
-          ...(typeof t.description === 'string' && t.description ? { description: t.description } : {}),
-          ...(t.inputSchema && typeof t.inputSchema === 'object' && !Array.isArray(t.inputSchema)
-            ? { inputSchema: t.inputSchema as Record<string, unknown> }
-            : {}),
-          ...(typeof t.inputSchemaJson === 'string' && t.inputSchemaJson
-            ? { inputSchemaJson: t.inputSchemaJson }
-            : {}),
-          ...(typeof t.annotationsJson === 'string' ? { annotationsJson: t.annotationsJson } : {}),
-        }))
-        .filter(t => t.toolName.length > 0),
-    })),
-  }
-}
-
 /**
- * 规范化 MCP 工具名以匹配 Anthropic tools 的 name pattern: ^[a-zA-Z0-9_-]+$
+ * 重新导出拆出去的 MCP 归一化函数，保持本文件原有公开 API 不变。
  *
- * MCP server 下发的工具名经常带 `.` / `:` / `/` / 空格 / 非 ASCII,会触发
- * provider 400 "tools[N].name: string does not match pattern"。
- *
- * 这里把所有非法字符替换为 `_`,合并连续下划线、修剪首尾下划线;空或首字符被
- * 修没的回退到 `mcp_tool`;冲突时追加 _2 / _3 / ... 保证一批工具内唯一。
- *
- * 注意:只 normalize 用作 LLM tools schema 的 name;providerIdentifier 与
- * toolName 保持原样,因为那两个字段用来把 tool_call 回路回客户端 mcpService
- * 做真实路由。
+ * `requestContextParts.ts` 与 `protocolStep4Blobs.test.ts` 一直从 protocol
+ * 入口导入这些符号；拆分是内部结构调整，不应该逼调用方改路径。
  */
-/**
- * 解析 MCP 工具归属 server 的 identifier,用于回填 McpArgs.server_identifier。
- *
- * 客户端构造工具定义时 (workbench q1f):
- *   name               = `${serverIdentifier}-${toolName}`
- *   providerIdentifier = serverName        ← 注意是显示名,不是 identifier
- *
- * 因此优先从 rawName 剥掉 `-${toolName}` 后缀拿到精确 identifier;这条路径不依赖
- * mcpFileSystemOptions,在 requestContext 走 blob 分片(ref_only)时依然可用。
- * 剥离失败再退回 serverName → serverIdentifier 反查表。
- */
-export function resolveMcpServerIdentifier(
-  rawName: string,
-  toolName: string,
-  providerIdentifier: string,
-  byName: Map<string, string>,
-): string {
-  if (rawName && toolName) {
-    const suffix = `-${toolName}`
-    if (rawName.endsWith(suffix) && rawName.length > suffix.length)
-      return rawName.slice(0, -suffix.length)
-  }
-  return byName.get(providerIdentifier) ?? ''
-}
-
-export function normalizeMcpToolName(raw: string, seen: Set<string>): string {
-  let base = raw.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_').replace(/^_+|_+$/g, '')
-  if (!base)
-    base = 'mcp_tool'
-  if (!seen.has(base))
-    return base
-  let i = 2
-  while (seen.has(`${base}_${i}`))
-    i++
-  return `${base}_${i}`
-}
-
-/**
- * 把 McpToolDefinition.inputSchema 规范成标准 JSON Schema object。
- *
- * 客户端 (@bufbuild/protobuf) 在 toJson 后 google.protobuf.Value 常见为普通 JSON,
- * 但偶尔仍会以 Value-wrapped 形态下发 (如 { structValue: { fields: {...} } }),
- * 这时 LLM 的 tools schema 会报无效 JSON Schema。
- *
- * 防御性地 unwrap 一层,并确保输出至少是 object 形态以通过 provider 侧校验。
- */
-export function normalizeMcpInputSchema(raw: unknown, rawJson?: unknown): Record<string, unknown> {
-  if (typeof rawJson === 'string' && rawJson.trim()) {
-    try {
-      const parsed = JSON.parse(rawJson)
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
-        return parsed as Record<string, unknown>
-    }
-    catch {
-      // 回退到 protobuf Value 字段;调用方仍能得到可诊断的 schema。
-    }
-  }
-  if (raw == null || typeof raw !== 'object')
-    return { type: 'object' }
-  const obj = raw as Record<string, unknown>
-
-  // 已是标准 JSON Schema: { type, properties?, ... }
-  if (typeof obj.type === 'string' || obj.properties || obj.$schema)
-    return obj
-
-  // google.protobuf.Value 形态: { structValue: { fields: { ... } } }
-  const structValue = obj.structValue as Record<string, unknown> | undefined
-  if (structValue) {
-    const fields = (structValue.fields as Record<string, unknown> | undefined) ?? structValue
-    return { type: 'object', properties: unwrapProtoValueFields(fields) }
-  }
-
-  // google.protobuf.Struct 形态: { fields: { ... } }
-  if (obj.fields && typeof obj.fields === 'object')
-    return { type: 'object', properties: unwrapProtoValueFields(obj.fields as Record<string, unknown>) }
-
-  // 其他未知形态直接返回,让 provider 报错 (比伪造 schema 更可诊断)
-  return obj
-}
-
-/** 把 google.protobuf.Struct.fields 中每个 Value 递归 unwrap 为裸值 */
-function unwrapProtoValueFields(fields: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(fields))
-    out[k] = unwrapProtoValue(v)
-  return out
-}
-
-function unwrapProtoValue(v: unknown): unknown {
-  if (v == null || typeof v !== 'object')
-    return v
-  const obj = v as Record<string, unknown>
-  if ('stringValue' in obj) return obj.stringValue
-  if ('numberValue' in obj) return obj.numberValue
-  if ('boolValue' in obj) return obj.boolValue
-  if ('nullValue' in obj) return null
-  if (obj.listValue && typeof obj.listValue === 'object') {
-    const values = (obj.listValue as Record<string, unknown>).values as unknown[] | undefined
-    return Array.isArray(values) ? values.map(unwrapProtoValue) : []
-  }
-  if (obj.structValue && typeof obj.structValue === 'object') {
-    const fields = (obj.structValue as Record<string, unknown>).fields as Record<string, unknown> | undefined
-    return fields ? unwrapProtoValueFields(fields) : {}
-  }
-  return v
-}
+export {
+  normalizeMcpInputSchema,
+  normalizeMcpToolName,
+  parseMcpMetaToolOptions,
+  resolveMcpServerIdentifier,
+} from './mcpNormalization'

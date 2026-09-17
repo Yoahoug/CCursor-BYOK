@@ -25,13 +25,13 @@ import type { ConnectRouter } from '@connectrpc/connect'
 import { toJson } from '@bufbuild/protobuf'
 import { ConnectError } from '@connectrpc/connect'
 import { AgentClientMessageSchema, AgentService } from '../../gen/agent_v1_pb'
+import { ErrorDetails_Error } from '../../gen/aiserver_v1_shared_pb'
 import { handleRunRequest } from '../../handlers/agent/agentOrchestrator'
 import { cacheBlob } from '../../handlers/agent/blobStore'
 import { registerCloneLineage } from '../../handlers/agent/cloneRegistry'
-import { ModelNotFoundError } from '../../handlers/models/mapper'
-import { makeByokConnectError, makeModelNotFoundError, makeProviderError } from '../../handlers/errors'
-import { ErrorDetails_Error } from '../../gen/aiserver_v1_shared_pb'
 import { closeSession, createEphemeralSession, getOrCreateSession, markSessionClosed, pushSessionMessage, waitForMessage } from '../../handlers/agent/session'
+import { makeByokConnectError, makeModelNotFoundError, makeProviderError } from '../../handlers/errors'
+import { ModelNotFoundError } from '../../handlers/models/mapper'
 import { logger } from '../../logger'
 
 /**
@@ -52,7 +52,8 @@ function normalizeToConnectError(error: unknown, context: Record<string, string>
 }
 
 function isStreamDestroyedError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false
+  if (!(error instanceof Error))
+    return false
   return error.message.includes('stream was destroyed')
     || error.message.includes('write after end')
     || error.message.includes('ERR_STREAM_DESTROYED')

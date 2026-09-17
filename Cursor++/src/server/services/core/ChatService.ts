@@ -16,61 +16,62 @@
  *
  * TODO: 实现 LLM 翻译层，将 Cursor 对话协议转换为 Anthropic/OpenAI/Gemini API 调用
  */
-import type { ConnectRouter } from '@connectrpc/connect';
-import { create } from '@bufbuild/protobuf';
-import { ChatService, StreamUnifiedChatRequestSchema, type StreamUnifiedChatRequest } from '../../gen/aiserver_v1_pb';
-import { buildConversationSummary, buildSpeculativeConversationSummaries } from '../../handlers/chat/summary';
-import { getLatestConversationSummary, persistConversationSummaries } from '../../database/chatSummaries';
-import { logger } from '../../logger';
+import type { ConnectRouter } from '@connectrpc/connect'
+import type { StreamUnifiedChatRequest } from '../../gen/aiserver_v1_pb'
+import { create } from '@bufbuild/protobuf'
+import { getLatestConversationSummary, persistConversationSummaries } from '../../database/chatSummaries'
+import { ChatService, StreamUnifiedChatRequestSchema } from '../../gen/aiserver_v1_pb'
+import { buildConversationSummary, buildSpeculativeConversationSummaries } from '../../handlers/chat/summary'
+import { logger } from '../../logger'
 
 async function withPersistedPreviousSummary(req: StreamUnifiedChatRequest): Promise<StreamUnifiedChatRequest> {
-    if (req.conversationSummary || !req.conversationId) {
-        return req;
-    }
+  if (req.conversationSummary || !req.conversationId) {
+    return req
+  }
 
-    const persistedSummary = await getLatestConversationSummary(req.conversationId);
-    if (!persistedSummary) {
-        return req;
-    }
+  const persistedSummary = await getLatestConversationSummary(req.conversationId)
+  if (!persistedSummary) {
+    return req
+  }
 
-    return create(StreamUnifiedChatRequestSchema, {
-        ...req,
-        conversationSummary: persistedSummary,
-    });
+  return create(StreamUnifiedChatRequestSchema, {
+    ...req,
+    conversationSummary: persistedSummary,
+  })
 }
 
 export default (router: ConnectRouter) => {
-    router.service(ChatService, {
-        getConversationSummary: async (req) => {
-            const hydratedReq = await withPersistedPreviousSummary(req);
-            const summary = buildConversationSummary(hydratedReq);
-            await persistConversationSummaries(hydratedReq.conversationId, 'latest', [summary]);
-            logger.info({
-                conversationId: hydratedReq.conversationId,
-                messageCount: hydratedReq.conversation.length,
-                truncationLastBubbleIdInclusive: summary.truncationLastBubbleIdInclusive,
-                resumeBubbleId: summary.clientShouldStartSendingFromInclusiveBubbleId,
-                includesToolResults: summary.includesToolResults,
-                strategy: summary.strategy,
-                usedPersistedPreviousSummary: !req.conversationSummary && hydratedReq.conversationSummary !== undefined,
-            }, '[SVC] chat conversation summary generated');
-            return summary;
-        },
+  router.service(ChatService, {
+    getConversationSummary: async (req) => {
+      const hydratedReq = await withPersistedPreviousSummary(req)
+      const summary = buildConversationSummary(hydratedReq)
+      await persistConversationSummaries(hydratedReq.conversationId, 'latest', [summary])
+      logger.info({
+        conversationId: hydratedReq.conversationId,
+        messageCount: hydratedReq.conversation.length,
+        truncationLastBubbleIdInclusive: summary.truncationLastBubbleIdInclusive,
+        resumeBubbleId: summary.clientShouldStartSendingFromInclusiveBubbleId,
+        includesToolResults: summary.includesToolResults,
+        strategy: summary.strategy,
+        usedPersistedPreviousSummary: !req.conversationSummary && hydratedReq.conversationSummary !== undefined,
+      }, '[SVC] chat conversation summary generated')
+      return summary
+    },
 
-        streamSpeculativeSummaries: async function* (req) {
-            const hydratedReq = await withPersistedPreviousSummary(req);
-            const summaries = buildSpeculativeConversationSummaries(hydratedReq);
-            await persistConversationSummaries(hydratedReq.conversationId, 'speculative', summaries);
-            logger.info({
-                conversationId: hydratedReq.conversationId,
-                messageCount: hydratedReq.conversation.length,
-                candidateCount: summaries.length,
-                truncationLastBubbleIdsInclusive: summaries.map(summary => summary.truncationLastBubbleIdInclusive),
-                usedPersistedPreviousSummary: !req.conversationSummary && hydratedReq.conversationSummary !== undefined,
-            }, '[SVC] chat speculative summaries generated');
-            for (const summary of summaries) {
-                yield summary;
-            }
-        },
-    });
-};
+    async* streamSpeculativeSummaries(req) {
+      const hydratedReq = await withPersistedPreviousSummary(req)
+      const summaries = buildSpeculativeConversationSummaries(hydratedReq)
+      await persistConversationSummaries(hydratedReq.conversationId, 'speculative', summaries)
+      logger.info({
+        conversationId: hydratedReq.conversationId,
+        messageCount: hydratedReq.conversation.length,
+        candidateCount: summaries.length,
+        truncationLastBubbleIdsInclusive: summaries.map(summary => summary.truncationLastBubbleIdInclusive),
+        usedPersistedPreviousSummary: !req.conversationSummary && hydratedReq.conversationSummary !== undefined,
+      }, '[SVC] chat speculative summaries generated')
+      for (const summary of summaries) {
+        yield summary
+      }
+    },
+  })
+}

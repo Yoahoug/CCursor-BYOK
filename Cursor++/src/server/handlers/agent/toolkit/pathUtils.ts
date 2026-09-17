@@ -1,7 +1,7 @@
-const WINDOWS_UNC_RE = /^(?:\\\\|\/\/)[^\\/]+[\\/][^\\/]+/;
+const WINDOWS_UNC_RE = /^(?:\\\\|\/\/)[^\\/]+[\\/][^\\/]+/
 
 export function isUncPath(value: string): boolean {
-  return WINDOWS_UNC_RE.test(value);
+  return WINDOWS_UNC_RE.test(value)
 }
 
 /**
@@ -12,9 +12,11 @@ export function isUncPath(value: string): boolean {
  * that logic using its own process.platform / process.cwd() / homedir().
  */
 export function resolveToolPath(rawPath: unknown, _workspacePath?: string): string {
-  if (typeof rawPath !== 'string') return '';
-  if (rawPath.includes('\0')) throw new Error('Path contains null bytes');
-  return rawPath;
+  if (typeof rawPath !== 'string')
+    return ''
+  if (rawPath.includes('\0'))
+    throw new Error('Path contains null bytes')
+  return rawPath
 }
 
 /**
@@ -24,6 +26,6 @@ export function resolveToolPath(rawPath: unknown, _workspacePath?: string): stri
  */
 export function assertSafeForServerFs(filePath: string, operation: string): void {
   if (isUncPath(filePath)) {
-    throw new Error(`${operation} refused to access UNC path during server-side preflight: ${filePath}`);
+    throw new Error(`${operation} refused to access UNC path during server-side preflight: ${filePath}`)
   }
 }

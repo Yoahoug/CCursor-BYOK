@@ -1,62 +1,64 @@
-import { SHELL_DEFAULT_TIMEOUT_MS, SHELL_FILE_OUTPUT_THRESHOLD_BYTES, SHELL_HARD_TIMEOUT_MS, SHELL_TIMEOUT_BEHAVIOR_BACKGROUND } from '../../constants';
-import { num, str } from '../shared';
-import type { ToolRegistryEntry } from '../types';
+import type { ToolRegistryEntry } from '../types'
+import { SHELL_DEFAULT_TIMEOUT_MS, SHELL_FILE_OUTPUT_THRESHOLD_BYTES, SHELL_HARD_TIMEOUT_MS, SHELL_TIMEOUT_BEHAVIOR_BACKGROUND } from '../../constants'
+import { num, str } from '../shared'
 
 function buildShellStartedArgs(input: Record<string, unknown>, callId: string): Record<string, unknown> {
-    const command = str(input.command);
-    const parts = command.trim().split(/\s+/).filter(Boolean);
-    return {
-        command,
-        workingDirectory: str(input.workingDirectory ?? input.cwd),
-        timeout: num(input.timeout, SHELL_DEFAULT_TIMEOUT_MS),
-        toolCallId: callId,
-        simpleCommands: parts.length > 0 ? [parts[0]] : [],
-        hasInputRedirect: false,
-        hasOutputRedirect: false,
-        isBackground: false,
-        skipApproval: false,
-        timeoutBehavior: SHELL_TIMEOUT_BEHAVIOR_BACKGROUND,
-        hardTimeout: num(input.hardTimeout, SHELL_HARD_TIMEOUT_MS),
-        ...(typeof input.description === 'string' ? { description: input.description } : {}),
-        parsingResult: parts.length > 0 ? {
-            executableCommands: [{
-                name: parts[0],
-                fullText: command,
-                args: parts.slice(1).map(value => ({ type: 'word', value })),
-            }],
-        } : undefined,
-        fileOutputThresholdBytes: SHELL_FILE_OUTPUT_THRESHOLD_BYTES,
-    };
+  const command = str(input.command)
+  const parts = command.trim().split(/\s+/).filter(Boolean)
+  return {
+    command,
+    workingDirectory: str(input.workingDirectory ?? input.cwd),
+    timeout: num(input.timeout, SHELL_DEFAULT_TIMEOUT_MS),
+    toolCallId: callId,
+    simpleCommands: parts.length > 0 ? [parts[0]] : [],
+    hasInputRedirect: false,
+    hasOutputRedirect: false,
+    isBackground: false,
+    skipApproval: false,
+    timeoutBehavior: SHELL_TIMEOUT_BEHAVIOR_BACKGROUND,
+    hardTimeout: num(input.hardTimeout, SHELL_HARD_TIMEOUT_MS),
+    ...(typeof input.description === 'string' ? { description: input.description } : {}),
+    parsingResult: parts.length > 0
+      ? {
+          executableCommands: [{
+            name: parts[0],
+            fullText: command,
+            args: parts.slice(1).map(value => ({ type: 'word', value })),
+          }],
+        }
+      : undefined,
+    fileOutputThresholdBytes: SHELL_FILE_OUTPUT_THRESHOLD_BYTES,
+  }
 }
 
 function buildShellExecArgs(input: Record<string, unknown>, callId: string): Record<string, unknown> {
-    const command = str(input.command);
-    const parts = command.trim().split(/\s+/);
-    const cmdName = parts[0] || '';
-    const cmdArgs = parts.slice(1).map(a => ({ type: 'word', value: a }));
-    return {
-        command,
-        workingDirectory: str(input.workingDirectory ?? input.cwd),
-        timeout: (input.timeout as number) || SHELL_DEFAULT_TIMEOUT_MS,
-        toolCallId: callId,
-        description: (input.description as string) || '',
-        simpleCommands: [cmdName],
-        parsingResult: {
-            executableCommands: [{
-                name: cmdName,
-                args: cmdArgs,
-                fullText: command,
-            }],
-        },
-        fileOutputThresholdBytes: SHELL_FILE_OUTPUT_THRESHOLD_BYTES,
-        timeoutBehavior: SHELL_TIMEOUT_BEHAVIOR_BACKGROUND,
-        hardTimeout: SHELL_HARD_TIMEOUT_MS,
-    };
+  const command = str(input.command)
+  const parts = command.trim().split(/\s+/)
+  const cmdName = parts[0] || ''
+  const cmdArgs = parts.slice(1).map(a => ({ type: 'word', value: a }))
+  return {
+    command,
+    workingDirectory: str(input.workingDirectory ?? input.cwd),
+    timeout: (input.timeout as number) || SHELL_DEFAULT_TIMEOUT_MS,
+    toolCallId: callId,
+    description: (input.description as string) || '',
+    simpleCommands: [cmdName],
+    parsingResult: {
+      executableCommands: [{
+        name: cmdName,
+        args: cmdArgs,
+        fullText: command,
+      }],
+    },
+    fileOutputThresholdBytes: SHELL_FILE_OUTPUT_THRESHOLD_BYTES,
+    timeoutBehavior: SHELL_TIMEOUT_BEHAVIOR_BACKGROUND,
+    hardTimeout: SHELL_HARD_TIMEOUT_MS,
+  }
 }
 
 const ANTHROPIC = {
-    name: 'Shell',
-    description: `Executes a command in a shell session with optional foreground timeout.
+  name: 'Shell',
+  description: `Executes a command in a shell session with optional foreground timeout.
 
 IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. DO NOT use it for file operations (reading, writing, editing, searching, finding files) - use the specialized tools for this instead.
 
@@ -191,35 +193,35 @@ Important:
 <other-common-operations>
 - View comments on a Github PR: gh api repos/foo/bar/pulls/123/comments
 </other-common-operations>`,
-    inputSchema: {
-            "type": "object",
-            "required": [
-                    "command"
-            ],
-            "properties": {
-                    "command": {
-                            "type": "string",
-                            "description": "The command to execute"
-                    },
-                    "description": {
-                            "type": "string",
-                            "description": "Clear, concise description of what this command does in 5-10 words"
-                    },
-                    "working_directory": {
-                            "type": "string",
-                            "description": "The absolute path to the working directory to execute the command in (defaults to current directory)"
-                    },
-                    "block_until_ms": {
-                            "type": "number",
-                            "description": "How long to block and wait for the command to complete before moving it to background (in milliseconds). Defaults to 30000ms (30 seconds). Set to 0 to immediately run the command in the background. The timer includes the shell startup time."
-                    }
-            }
+  inputSchema: {
+    type: 'object',
+    required: [
+      'command',
+    ],
+    properties: {
+      command: {
+        type: 'string',
+        description: 'The command to execute',
+      },
+      description: {
+        type: 'string',
+        description: 'Clear, concise description of what this command does in 5-10 words',
+      },
+      working_directory: {
+        type: 'string',
+        description: 'The absolute path to the working directory to execute the command in (defaults to current directory)',
+      },
+      block_until_ms: {
+        type: 'number',
+        description: 'How long to block and wait for the command to complete before moving it to background (in milliseconds). Defaults to 30000ms (30 seconds). Set to 0 to immediately run the command in the background. The timer includes the shell startup time.',
+      },
     },
-};
+  },
+}
 
 const OPENAI = {
-    name: 'Shell',
-    description: `Executes a given command in a shell session with optional foreground timeout.
+  name: 'Shell',
+  description: `Executes a given command in a shell session with optional foreground timeout.
 
 IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. DO NOT use it for file operations (reading, writing, editing, searching, finding files) - use the specialized tools for this instead.
 
@@ -354,35 +356,35 @@ Important:
 <other-common-operations>
 - View comments on a Github PR: gh api repos/foo/bar/pulls/123/comments
 </other-common-operations>`,
-    inputSchema: {
-            "type": "object",
-            "properties": {
-                    "command": {
-                            "type": "string",
-                            "description": "The command to execute"
-                    },
-                    "working_directory": {
-                            "type": "string",
-                            "description": "The absolute path to the working directory to execute the command in (defaults to current directory)"
-                    },
-                    "block_until_ms": {
-                            "type": "number",
-                            "description": "How long to block and wait for the command to complete before moving it to background (in milliseconds). Defaults to 30000ms (30 seconds). Set to 0 to immediately run the command in the background. The timer includes the shell startup time."
-                    },
-                    "description": {
-                            "type": "string",
-                            "description": "Clear, concise description of what this command does in 5-10 words"
-                    }
-            },
-            "required": [
-                    "command"
-            ]
+  inputSchema: {
+    type: 'object',
+    properties: {
+      command: {
+        type: 'string',
+        description: 'The command to execute',
+      },
+      working_directory: {
+        type: 'string',
+        description: 'The absolute path to the working directory to execute the command in (defaults to current directory)',
+      },
+      block_until_ms: {
+        type: 'number',
+        description: 'How long to block and wait for the command to complete before moving it to background (in milliseconds). Defaults to 30000ms (30 seconds). Set to 0 to immediately run the command in the background. The timer includes the shell startup time.',
+      },
+      description: {
+        type: 'string',
+        description: 'Clear, concise description of what this command does in 5-10 words',
+      },
     },
-};
+    required: [
+      'command',
+    ],
+  },
+}
 
 const GEMINI = {
-    name: 'Shell',
-    description: `Executes a given command in a shell session with optional foreground timeout.
+  name: 'Shell',
+  description: `Executes a given command in a shell session with optional foreground timeout.
 
 IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. DO NOT use it for file operations (reading, writing, editing, searching, finding files) - use the specialized tools for this instead.
 
@@ -517,42 +519,42 @@ Important:
 <other-common-operations>
 - View comments on a Github PR: gh api repos/foo/bar/pulls/123/comments
 </other-common-operations>`,
-    inputSchema: {
-            "type": "OBJECT",
-            "properties": {
-                    "block_until_ms": {
-                            "type": "NUMBER",
-                            "description": "How long to block and wait for the command to complete before moving it to background (in milliseconds). Defaults to 30000ms (30 seconds). Set to 0 to immediately run the command in the background. The timer includes the shell startup time."
-                    },
-                    "command": {
-                            "type": "STRING",
-                            "description": "The command to execute"
-                    },
-                    "description": {
-                            "type": "STRING",
-                            "description": "Clear, concise description of what this command does in 5-10 words"
-                    },
-                    "working_directory": {
-                            "type": "STRING",
-                            "description": "The absolute path to the working directory to execute the command in (defaults to current directory)"
-                    }
-            },
-            "required": [
-                    "command"
-            ]
+  inputSchema: {
+    type: 'OBJECT',
+    properties: {
+      block_until_ms: {
+        type: 'NUMBER',
+        description: 'How long to block and wait for the command to complete before moving it to background (in milliseconds). Defaults to 30000ms (30 seconds). Set to 0 to immediately run the command in the background. The timer includes the shell startup time.',
+      },
+      command: {
+        type: 'STRING',
+        description: 'The command to execute',
+      },
+      description: {
+        type: 'STRING',
+        description: 'Clear, concise description of what this command does in 5-10 words',
+      },
+      working_directory: {
+        type: 'STRING',
+        description: 'The absolute path to the working directory to execute the command in (defaults to current directory)',
+      },
     },
-};
+    required: [
+      'command',
+    ],
+  },
+}
 
 export const ShellTool: ToolRegistryEntry = {
-    canonicalName: 'Shell',
-    aliases: ["Shell"],
-    cursorToolType: 'shellToolCall',
-    execArgsType: 'shellStreamArgs',
-    llmToolByProvider: {
-        anthropic: ANTHROPIC,
-        openai: OPENAI,
-        gemini: GEMINI,
-    },
-    buildStartedArgs: buildShellStartedArgs,
-    buildExecArgs: buildShellExecArgs,
-};
+  canonicalName: 'Shell',
+  aliases: ['Shell'],
+  cursorToolType: 'shellToolCall',
+  execArgsType: 'shellStreamArgs',
+  llmToolByProvider: {
+    anthropic: ANTHROPIC,
+    openai: OPENAI,
+    gemini: GEMINI,
+  },
+  buildStartedArgs: buildShellStartedArgs,
+  buildExecArgs: buildShellExecArgs,
+}

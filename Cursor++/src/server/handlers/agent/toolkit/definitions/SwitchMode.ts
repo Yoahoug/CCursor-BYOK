@@ -1,9 +1,9 @@
-import { str } from '../shared';
-import type { ToolRegistryEntry } from '../types';
+import type { ToolRegistryEntry } from '../types'
+import { str } from '../shared'
 
 const ANTHROPIC = {
-    name: 'SwitchMode',
-    description: `Switch the interaction mode to better match the current task. Each mode is optimized for a specific type of work.
+  name: 'SwitchMode',
+  description: `Switch the interaction mode to better match the current task. Each mode is optimized for a specific type of work.
 
 ## When to Switch Modes
 
@@ -65,31 +65,31 @@ Read-only mode for exploring code and answering questions without making changes
 - **Explain briefly**: When switching, briefly explain why in your \`explanation\` parameter
 - **Don't over-switch**: If the current mode is working, stay in it
 - **User approval required**: Mode switches require user consent`,
-    inputSchema: {
-            "type": "object",
-            "required": [
-                    "target_mode_id"
-            ],
-            "properties": {
-                    "target_mode_id": {
-                            "type": "string",
-                            "enum": [
-                                    "plan",
-                                    "agent"
-                            ],
-                            "description": "The mode to switch to. Allowed values: 'plan', 'agent'."
-                    },
-                    "explanation": {
-                            "type": "string",
-                            "description": "Optional explanation for why the mode switch is requested. This helps the user understand why you're switching modes."
-                    }
-            }
+  inputSchema: {
+    type: 'object',
+    required: [
+      'target_mode_id',
+    ],
+    properties: {
+      target_mode_id: {
+        type: 'string',
+        enum: [
+          'plan',
+          'agent',
+        ],
+        description: 'The mode to switch to. Allowed values: \'plan\', \'agent\'.',
+      },
+      explanation: {
+        type: 'string',
+        description: 'Optional explanation for why the mode switch is requested. This helps the user understand why you\'re switching modes.',
+      },
     },
-};
+  },
+}
 
 const OPENAI = {
-    name: 'SwitchMode',
-    description: `Switch the interaction mode to better match the current task. Each mode is optimized for a specific type of work.
+  name: 'SwitchMode',
+  description: `Switch the interaction mode to better match the current task. Each mode is optimized for a specific type of work.
 
 ## When to Switch Modes
 
@@ -151,31 +151,31 @@ Read-only mode for exploring code and answering questions without making changes
 - **Explain briefly**: When switching, briefly explain why in your \`explanation\` parameter
 - **Don't over-switch**: If the current mode is working, stay in it
 - **User approval required**: Mode switches require user consent`,
-    inputSchema: {
-            "type": "object",
-            "properties": {
-                    "target_mode_id": {
-                            "type": "string",
-                            "description": "The mode to switch to. Allowed values: 'plan', 'agent'.",
-                            "enum": [
-                                    "plan",
-                                    "agent"
-                            ]
-                    },
-                    "explanation": {
-                            "type": "string",
-                            "description": "Optional explanation for why the mode switch is requested. This helps the user understand why you're switching modes."
-                    }
-            },
-            "required": [
-                    "target_mode_id"
-            ]
+  inputSchema: {
+    type: 'object',
+    properties: {
+      target_mode_id: {
+        type: 'string',
+        description: 'The mode to switch to. Allowed values: \'plan\', \'agent\'.',
+        enum: [
+          'plan',
+          'agent',
+        ],
+      },
+      explanation: {
+        type: 'string',
+        description: 'Optional explanation for why the mode switch is requested. This helps the user understand why you\'re switching modes.',
+      },
     },
-};
+    required: [
+      'target_mode_id',
+    ],
+  },
+}
 
 const GEMINI = {
-    name: 'SwitchMode',
-    description: `Switch the interaction mode to better match the current task. Each mode is optimized for a specific type of work.
+  name: 'SwitchMode',
+  description: `Switch the interaction mode to better match the current task. Each mode is optimized for a specific type of work.
 
 ## When to Switch Modes
 
@@ -237,37 +237,37 @@ Read-only mode for exploring code and answering questions without making changes
 - **Explain briefly**: When switching, briefly explain why in your \`explanation\` parameter
 - **Don't over-switch**: If the current mode is working, stay in it
 - **User approval required**: Mode switches require user consent`,
-    inputSchema: {
-            "type": "OBJECT",
-            "properties": {
-                    "explanation": {
-                            "type": "STRING",
-                            "description": "Optional explanation for why the mode switch is requested. This helps the user understand why you're switching modes."
-                    },
-                    "target_mode_id": {
-                            "type": "STRING",
-                            "description": "The mode to switch to. Allowed values: 'plan', 'agent'."
-                    }
-            },
-            "required": [
-                    "target_mode_id"
-            ]
+  inputSchema: {
+    type: 'OBJECT',
+    properties: {
+      explanation: {
+        type: 'STRING',
+        description: 'Optional explanation for why the mode switch is requested. This helps the user understand why you\'re switching modes.',
+      },
+      target_mode_id: {
+        type: 'STRING',
+        description: 'The mode to switch to. Allowed values: \'plan\', \'agent\'.',
+      },
     },
-};
+    required: [
+      'target_mode_id',
+    ],
+  },
+}
 
 export const SwitchModeTool: ToolRegistryEntry = {
-    canonicalName: 'SwitchMode',
-    aliases: ["SwitchMode"],
-    cursorToolType: 'switchModeToolCall',
-    execArgsType: null,
-    llmToolByProvider: {
-        anthropic: ANTHROPIC,
-        openai: OPENAI,
-        gemini: GEMINI,
-    },
-    buildStartedArgs: (input, callId) => ({
-        targetModeId: str(input.target_mode_id),
-        ...(typeof input.explanation === 'string' ? { explanation: input.explanation } : {}),
-        toolCallId: callId,
-    }),
-};
+  canonicalName: 'SwitchMode',
+  aliases: ['SwitchMode'],
+  cursorToolType: 'switchModeToolCall',
+  execArgsType: null,
+  llmToolByProvider: {
+    anthropic: ANTHROPIC,
+    openai: OPENAI,
+    gemini: GEMINI,
+  },
+  buildStartedArgs: (input, callId) => ({
+    targetModeId: str(input.target_mode_id),
+    ...(typeof input.explanation === 'string' ? { explanation: input.explanation } : {}),
+    toolCallId: callId,
+  }),
+}

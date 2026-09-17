@@ -1,10 +1,11 @@
 import type { AgentServerMessage } from '../../gen/agent_v1_pb'
+import type { RepairDiagnostics } from '../llm/transformMessages'
 import type { LLMContentBlock, LLMMessage } from '../llm/types'
 import { logger } from '../../logger'
+import { createRepairDiagnostics, hasRepairMutations, repairConversationHistory } from '../llm/transformMessages'
 import { decodeBlob, encodeBlob } from './blob'
 import { cacheBlob, getCachedBlob } from './blobStore'
 import { normalizeBlobMessage, restoreBlobMessageToLLMMessage } from './transcript'
-import { createRepairDiagnostics, hasRepairMutations, repairConversationHistory, type RepairDiagnostics } from '../llm/transformMessages'
 
 export interface HistoryEntry {
   blobId: string

@@ -9,11 +9,11 @@
  *
  * BYOK: 返回空列表 (用户通过本地 .cursor/mcp.json 配置 MCP 服务器)
  */
-import type { ConnectRouter } from '@connectrpc/connect';
-import { MCPRegistryService } from '../../gen/aiserver_v1_pb';
+import type { ConnectRouter } from '@connectrpc/connect'
+import { MCPRegistryService } from '../../gen/aiserver_v1_pb'
 
 export default (router: ConnectRouter) => {
-    router.service(MCPRegistryService, {
-        getKnownServers: async () => ({}),
-    });
-};
+  router.service(MCPRegistryService, {
+    getKnownServers: async () => ({}),
+  })
+}

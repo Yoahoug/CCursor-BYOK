@@ -14,9 +14,9 @@
  * Transport: repoTransport (repoBackendUrl, repo42.cursor.sh)
  *   不经过 api2，BYOK 不拦截。注册为 fallback。
  */
-import type { ConnectRouter } from '@connectrpc/connect';
-import { RepositoryService } from '../../gen/aiserver_v1_pb';
+import type { ConnectRouter } from '@connectrpc/connect'
+import { RepositoryService } from '../../gen/aiserver_v1_pb'
 
 export default (router: ConnectRouter) => {
-    router.service(RepositoryService, {});
-};
+  router.service(RepositoryService, {})
+}

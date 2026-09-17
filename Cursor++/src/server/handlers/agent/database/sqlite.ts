@@ -1,1 +1,1 @@
-export { getAgentDatabase, resolveAgentDatabasePath, closeAgentDatabase } from '../../../database/sqlite';
+export { closeAgentDatabase, getAgentDatabase, resolveAgentDatabasePath } from '../../../database/sqlite'
