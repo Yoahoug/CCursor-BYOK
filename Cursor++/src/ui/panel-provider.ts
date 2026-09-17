@@ -228,7 +228,7 @@ export class PanelProvider implements vscode.WebviewViewProvider {
           break
         }
         case 'testSearchProvider': {
-          const providerType = String(msg.type || '')
+          const providerType = String(msg.providerType || '')
           const apiKey = String(msg.apiKey || '')
           const baseUrl = String(msg.baseUrl || '').trim()
           try {
@@ -251,7 +251,7 @@ export class PanelProvider implements vscode.WebviewViewProvider {
           break
         }
         case 'testFetchProvider': {
-          const providerType = String(msg.type || '')
+          const providerType = String(msg.providerType || '')
           const apiKey = String(msg.apiKey || '')
           const baseUrl = String(msg.baseUrl || '').trim()
           try {
@@ -422,6 +422,10 @@ export class PanelProvider implements vscode.WebviewViewProvider {
           }
           break
         }
+        default:
+          // 未知消息类型一律留痕。默认静默丢弃会让"字段撞名"这类 bug 表现为
+          // 界面永远转圈 —— 例如载荷里带了 type 覆盖掉信封字段, 宿主这边什么也看不到。
+          logger.warn({ type: msg?.type }, '[UI] unknown webview message type')
       }
     })
 

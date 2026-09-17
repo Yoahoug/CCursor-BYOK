@@ -150,7 +150,8 @@ export function initApp(Alpine: AlpineType) {
       this.searchTesting = true
       this.searchTestResult = null
       this.post('testSearchProvider', {
-        type,
+        // 字段名不能叫 type —— post() 用它承载消息类型, 同名会被载荷覆盖掉
+        providerType: type,
         apiKey: this.getSearchProviderKey(type),
         baseUrl: this.getSearchProviderBaseUrl(type),
       })
@@ -187,7 +188,8 @@ export function initApp(Alpine: AlpineType) {
       this.fetchTesting = true
       this.fetchTestResult = null
       this.post('testFetchProvider', {
-        type: 'tavily',
+        // 同 testSearchProvider: 不能用 type 作字段名, 否则会覆盖消息类型
+        providerType: 'tavily',
         apiKey: this.getSearchProviderKey('tavily'),
         baseUrl: this.getSearchProviderBaseUrl('tavily'),
       })
@@ -1643,8 +1645,12 @@ export function initApp(Alpine: AlpineType) {
     },
 
     // ── 通信 ──
+    //
+    // 信封字段必须最后展开: 载荷里若带了同名 key (例如 type), 会覆盖掉消息类型,
+    // 宿主侧 switch 就匹配不到任何分支 —— 请求被静默丢弃, 界面永远停在"Testing…"。
+    // 让信封优先, 这类冲突退化成"载荷字段丢失"而不是"整条消息消失"。
     post(type: string, payload?: any) {
-      vscode.postMessage({ type, ...payload })
+      vscode.postMessage({ ...payload, type })
     },
   }
 
