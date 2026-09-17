@@ -44,13 +44,20 @@ export function ModelsSection() {
           </div>
           <div class="remote-models-list">
             <template {...{ 'x-for': 'rm in $store.app.remoteModels[p.id].models' }}>
+              {/*
+                显示上游给的 display_name，而不是 id。
+                部分中转站会把 id 混淆成不可读的串（flash → hsalf 之类），
+                拿 id 当标题会让整列都是乱码；id 只在两者不同时作为副标题出现。
+              */}
               <div
                 class="remote-model-item"
-                {...{
-                  'x-on:click': '$store.app.applyRemoteModel(p.id, rm.id)',
-                  'x-text': 'rm.id',
-                }}
+                x-on:click="$store.app.applyRemoteModel(p.id, rm)"
+                x-bind:title="rm.id"
               >
+                <span class="remote-model-name" x-text="$store.app.remoteModelPrimary(rm)"></span>
+                <template {...{ 'x-if': '$store.app.remoteModelSecondary(rm)' }}>
+                  <span class="remote-model-id" x-text="$store.app.remoteModelSecondary(rm)"></span>
+                </template>
               </div>
             </template>
           </div>

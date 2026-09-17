@@ -24,6 +24,7 @@ import { resetProviderInstanceCache } from '../server/handlers/llm/providerRunti
 import { logger } from '../server/logger'
 import { buildUsageSummary, renameProviderInUsageFile } from '../server/stats/usageStore'
 import { buildProviderBaseUrl, materializeModelProtocols } from '../shared/providerProtocol'
+import { normalizeRemoteModels } from '../shared/remoteModels'
 import { renderHtml } from './components/layout'
 import { getState, onStateChange, refreshState } from './state'
 
@@ -151,7 +152,6 @@ export class PanelProvider implements vscode.WebviewViewProvider {
         }
         case 'fetchRemoteModels': {
           const pid = msg.pid as string
-          console.log('[FETCH_MODELS] received', pid)
           const providers = getState().providers || []
           const draft = msg.draft as any
           const p = draft || providers.find((x: any) => x.id === pid)
@@ -203,15 +203,7 @@ export class PanelProvider implements vscode.WebviewViewProvider {
               break
             }
             const json = await resp.json() as any
-            const raw = json.data || json.models || []
-            const models = raw.map((m: any) => ({
-              // OpenAI: m.id; Anthropic: m.id; Gemini: m.name (e.g. "models/gemini-2.5-flash")
-              id: m.id || m.name || m.model || '',
-              created: m.created || 0,
-              ownedBy: m.owned_by || '',
-              displayName: m.displayName || '',
-            })).filter((m: any) => m.id)
-            models.sort((a: any, b: any) => (b.created || 0) - (a.created || 0))
+            const models = normalizeRemoteModels(json)
             this.view?.webview.postMessage({ type: 'remoteModelsResult', pid, models })
           }
           catch (err) {

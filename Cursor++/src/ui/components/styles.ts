@@ -714,16 +714,37 @@ export const styles = /* css */ `
   .remote-models-header { display: flex; justify-content: space-between; align-items: center; padding: 5px 9px; background: var(--cpp-surface-2); }
   .remote-models-title { font-size: 10px; font-weight: 600; color: var(--cpp-text-dim); }
   .remote-models-list { max-height: 200px; overflow-y: auto; background: var(--cpp-surface); }
+  /*
+    一项两行：主行是可读名，副行是真实 id。
+    display_name 与 id 一致时不显示副行（那种情况是重复信息，白占高度）。
+    id 用等宽字体：混淆过的 id 是随机串，等宽下更易逐字比对。
+  */
   .remote-model-item {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
     padding: 4px 9px;
     font-size: 11px;
-    font-family: var(--cpp-mono);
     cursor: pointer;
-    white-space: nowrap;
+    min-width: 0;
+  }
+  .remote-model-name {
+    color: var(--cpp-text);
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .remote-model-item:hover { background: var(--cpp-accent-soft); color: var(--cpp-accent); }
+  .remote-model-id {
+    font-family: var(--cpp-mono);
+    font-size: 9px;
+    color: var(--cpp-text-faint);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .remote-model-item:hover { background: var(--cpp-accent-soft); }
+  .remote-model-item:hover .remote-model-name { color: var(--cpp-accent); }
+  .remote-model-item:hover .remote-model-id { color: var(--cpp-accent); }
 
   /* ── Quick Switch ─────────────────────────────────────── */
   .qs-section { margin-top: 8px; border: 1px solid var(--cpp-border); border-radius: var(--cpp-radius-sm); overflow: hidden; }

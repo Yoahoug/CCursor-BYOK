@@ -8,6 +8,7 @@ import type { Alpine as AlpineType } from 'alpinejs'
 import type { ProviderType } from '../../server/data/defaults'
 import type { ModelTestResult, ProtocolAttempt, ProtocolDetection } from '../../shared/modelTestTypes'
 import type { ProtocolFamily, ProtocolFamilyOption } from '../../shared/providerProtocol'
+import type { RemoteModelEntry } from '../../shared/remoteModels'
 import type { UsageSummary } from '../../shared/usageTypes'
 import { isProviderType } from '../../server/data/defaults'
 import {
@@ -41,7 +42,7 @@ export function initApp(Alpine: AlpineType) {
     expanded: {} as Record<string, boolean>,
     modelExpanded: {} as Record<string, Record<string, boolean>>,
     headersInvalid: {} as Record<string, boolean>,
-    remoteModels: {} as Record<string, { loading: boolean, models?: any[], error?: string }>,
+    remoteModels: {} as Record<string, { loading: boolean, models?: RemoteModelEntry[], error?: string }>,
     saveSnapshots: {} as Record<string, { targetIds: string[], snapshots: Record<string, any> }>,
     savingProviders: {} as Record<string, boolean>,
 
@@ -1486,20 +1487,45 @@ export function initApp(Alpine: AlpineType) {
       this.remoteModels = rest
     },
 
-    applyRemoteModel(pid: string, modelId: string) {
+    applyRemoteModel(pid: string, rm: RemoteModelEntry) {
       this.addModel(pid)
       const d = this.ensureDraft(pid)
       const models = d.models || []
       const lastModel = models[models.length - 1]
       if (lastModel) {
-        lastModel.apiModel = modelId
+        lastModel.apiModel = rm.id
+        // Display Name 也一并填上。
+        //
+        // 有些中转站会把 id 混淆成不可读的串（把 flash 倒写成 hsalf 之类），
+        // 此时上游给的 display_name 才是唯一认得出来的名字。只填 apiModel 的话
+        // 用户得自己对照着手敲一遍，而这正是最容易敲错的地方。
+        // 只在还没填过时才写，避免覆盖用户已经改好的名字。
+        if (!lastModel.displayName?.trim())
+          lastModel.displayName = rm.displayName || rm.id
         // 展开新 model 面板
         if (!this.modelExpanded[pid])
           this.modelExpanded[pid] = {}
         this.modelExpanded[pid][lastModel.id] = true
         // 触发 catalog fuzzy search 自动补全
-        queueMicrotask(() => this.searchCatalog(pid, lastModel.id, modelId))
+        queueMicrotask(() => this.searchCatalog(pid, lastModel.id, rm.id))
       }
+    },
+
+    /**
+     * 列表里每一项的展示文案。
+     *
+     * 上游给了 display_name 就用它当主标题 —— id 可能是混淆过的乱码，
+     * 直接拿 id 当标题会让整列都不可读。
+     */
+    remoteModelPrimary(rm: RemoteModelEntry): string {
+      return rm.displayName || rm.id
+    },
+
+    /** 副标题：只有可读名和 id 不一致时才显示 id，否则是重复信息 */
+    remoteModelSecondary(rm: RemoteModelEntry): string {
+      if (!rm.displayName || rm.displayName === rm.id)
+        return ''
+      return rm.id
     },
 
     /** apiModel blur — id 保持不变,不再同步覆盖 */
