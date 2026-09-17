@@ -1,6 +1,6 @@
 {
   "name": "@cometix/ccursor",
-  "version": "0.0.22",
+  "version": "0.0.23",
   "description": "Cursor++ BYOK Installer — Bring Your Own Key for Cursor IDE",
   "type": "module",
   "bin": {
