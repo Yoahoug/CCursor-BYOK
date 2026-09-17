@@ -806,22 +806,44 @@ export function initApp(Alpine: AlpineType) {
 
     usageHover: null as null | { day: any, leftPercent: number },
 
+    /**
+     * 最后一次悬浮的目标 —— clearUsageHover **不**清它。
+     *
+     * 提示框的淡出有 120ms。如果一离开就把内容置空，这段过渡里剩下的是一个
+     * 空边框在图表上方闪一下：日期和数值都没了，但盒子还在，因为 opacity 正从
+     * 1 往 0 走。位置同理 —— 清空后 left 会落回兜底的 50%，盒子会先横跳到中间
+     * 再消失。所以淡出期间沿用上一次的内容与位置，让它带着字整体淡下去。
+     */
+    usageTipLast: null as null | { day: any, leftPercent: number },
+
+    /** 展开中取当前目标，淡出中取上一次 —— 提示框任何时候都有可显示的内容 */
+    get _usageTipTarget(): { day: any, leftPercent: number } | null {
+      return this.usageHover ?? this.usageTipLast
+    },
+
     setUsageHover(day: any, index: number, count: number) {
       const center = count <= 0 ? 50 : ((index + 0.5) / count) * 100
       // 夹在 16%~84%：提示框自身有宽度，贴边会被面板裁掉
-      this.usageHover = { day, leftPercent: Math.min(84, Math.max(16, center)) }
+      const leftPercent = Math.min(84, Math.max(16, center))
+      this.usageHover = { day, leftPercent }
+      this.usageTipLast = this.usageHover
     },
 
     clearUsageHover() {
+      // 只关不删：内容要留给淡出动画用，见上面的 usageTipLast
       this.usageHover = null
     },
 
     usageTipStyle(): string {
-      return `left:${this.usageHover?.leftPercent ?? 50}%`
+      return `left:${this._usageTipTarget?.leftPercent ?? 50}%`
+    },
+
+    usageTipDate(): string {
+      return this._usageTipTarget?.day?.date ?? ''
     },
 
     usageHoverRows(): Array<{ label: string, value: string }> {
-      const day = this.usageHover?.day
+      const day = this._usageTipTarget?.day
       if (!day)
         return []
       return [

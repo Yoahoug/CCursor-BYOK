@@ -157,7 +157,7 @@ export function UsageDashboard() {
                 x-bind:class="{ 'is-open': $store.app.usageHover !== null }"
                 {...{ 'x-bind:style': '$store.app.usageTipStyle()' }}
               >
-                <div class="usage-tip-date" x-text="$store.app.usageHover?.day?.date"></div>
+                <div class="usage-tip-date" x-text="$store.app.usageTipDate()"></div>
                 <template x-for="row in $store.app.usageHoverRows()" x-bind:key="row.label">
                   <div class="usage-tip-row">
                     <span class="usage-tip-label" x-text="row.label"></span>
