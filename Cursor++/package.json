@@ -2,7 +2,7 @@
   "publisher": "cometix-space",
   "name": "cursor2plus",
   "displayName": "Cursor++",
-  "version": "0.0.23",
+  "version": "0.0.24",
   "description": "Cursor++ BYOK extension — bring your own key (BYOK) for the Cursor IDE",
   "icon": "resources/icon.png",
   "main": "./dist/extension.js",
