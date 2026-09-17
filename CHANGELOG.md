@@ -8,6 +8,54 @@ fork 基准为上游 `0.0.15`。README 只负责「这是什么 / 怎么装 / �
 
 ---
 
+## 0.0.25 — 修复 Web Tools 的 Test connection 卡在测试中
+
+### 问题
+
+面板里 Web Tools 的 **Test connection** 按钮（Search 与 Fetch 两个页签都是）点下去后
+状态永远停在 `Testing…`，既不出结果也不报错，看起来像请求被卡死了。实际与目标地址
+通不通无关 —— 请求**根本没有发出去**。
+
+### 根因：载荷字段覆盖了消息类型
+
+`post()` 构造消息时先写信封字段、后展开载荷：
+
+```ts
+post(type: string, payload?: any) {
+  vscode.postMessage({ type, ...payload })   // 载荷展开在后
+}
+```
+
+而调用方为了传「服务商类型」也用了 `type` 这个字段名：
+
+```ts
+this.post('testSearchProvider', {
+  type,                                       // ← 与信封字段撞名
+  apiKey: this.getSearchProviderKey(type),
+  baseUrl: this.getSearchProviderBaseUrl(type),
+})
+```
+
+`...payload` 展开在后，`'tavily'` 把信封里的 `'testSearchProvider'` 覆盖掉了。实际发出
+去的是 `{ type: 'tavily', … }`；宿主侧 `switch (msg.type)` 里没有这个分支，而 switch
+原本也没有 `default`，于是消息被**静默丢弃**，回包自然永远不会来。webview 侧只因
+「发了请求」就把 `searchTesting` 置为 `true` 且再无复位机会，按钮就永久停在测试中。
+
+这也解释了为什么失败得如此"干净"：没有报错、没有超时、日志里也什么都看不到。
+
+### 修复
+
+- **载荷字段改名** `type` → `providerType`（Search 与 Fetch 两处，宿主侧同步改读该字段）。
+- **信封优先**：`post()` 改为 `{ ...payload, type }`，让这类撞名退化成「丢一个载荷字段」
+  而不是「整条消息消失」——两个都是 bug，但后者表现为界面无限转圈，排查成本高得多。
+- **宿主补 `default` 分支**并记 `warn` 日志，未知消息类型一律留痕，不再无声无息。
+
+### 说明
+
+`panel-provider.ts` 里的 webview 脚本是模块级缓存的，更新后需**重启 Cursor** 才会加载
+新代码；沿用 `cursor2plus-*.vsix` 旧包安装的也会停留在旧构建上。
+
+
 ## 0.0.24 — 模型排序、仪表盘口径、浮层修复
 
 本轮四项改动全部来自实际使用中暴露的问题：模型列表无法按常用度排序、

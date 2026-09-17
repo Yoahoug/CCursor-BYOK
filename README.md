@@ -22,7 +22,7 @@
 | 上游作者 | CometixSpace |
 | 上游许可 | AGPL-3.0-or-later |
 | 本项目基于 | 上游 `0.0.15` |
-| 本项目版本 | `0.0.24` |
+| 本项目版本 | `0.0.25` |
 | 维护者 | [@Yoahoug](https://github.com/Yoahoug)（非上游作者） |
 
 上游 Cursor++ 的完整功能介绍与架构说明见 [README_UPSTREAM_CN.md](./README_UPSTREAM_CN.md)
