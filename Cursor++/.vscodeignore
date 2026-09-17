@@ -8,6 +8,8 @@ out/**
 src/**
 tools/**
 scripts/**
+# 前端预览工具（dev-only）—— 只在本地开发时用，运行时用不到
+dev/**
 .gitignore
 .yarnrc
 .npmrc

@@ -7,6 +7,7 @@ node_modules/
 # 构建产物
 Cursor++/dist/
 Cursor++/*.vsix
+Cursor++/dev/.cache/
 installer/dist/
 installer/vsix/
 
