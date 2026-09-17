@@ -1084,6 +1084,35 @@ export const styles = /* css */ `
   }
 
   /*
+    口径块：今日 / 全部累计。
+    上下排开而不是并排 —— 两个块回答的是不同问题（"今天有没有白花" vs
+    "总体上省了多少"），时间尺度也不同，并排会诱使人横向比较，而那个比较
+    没有意义。上下排开各自成块，读的时候就不会串。
+  */
+  .usage-scopes { display: flex; flex-direction: column; gap: 10px; }
+  .usage-scope { display: flex; flex-direction: column; gap: 6px; }
+  /*
+    块的标题条：左侧是口径名，右侧是这段时间的起止。
+    只给左侧加一道强调色竖线 —— 两个块结构完全相同，没有这个记号的话
+    视线容易把"全部累计"的数字当成"今日"的。
+  */
+  .usage-scope-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    padding-left: 7px;
+    border-left: 2px solid var(--cpp-accent);
+  }
+  .usage-scope-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--cpp-text);
+  }
+  .usage-scope-range { font-size: 9px; font-family: var(--cpp-mono); color: var(--cpp-text-faint); }
+
+  /*
     指标网格：6 等分，小卡片各占 2 份（一行三块），主指标占满一行。
     用 6 等分而不是 3 等分，是为了让主指标能跨满整行、小卡片又能三等分 ——
     3 等分做不到"一行三块 + 整行通栏"两种跨度并存。

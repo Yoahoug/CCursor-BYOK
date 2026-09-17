@@ -128,10 +128,10 @@ describe('aggregateUsage', () => {
     expect(summary.byDay[4]?.calls).toBe(1)
   })
 
-  it('窗口外的记录不计入总数', () => {
+  it('窗口外的记录不计入窗口口径', () => {
     const records = [recordAt(now - dayMs * 40), recordAt(now)]
     const summary = aggregateUsage(records, { windowDays: 14, now })
-    expect(summary.total.calls).toBe(1)
+    expect(summary.window.calls).toBe(1)
   })
 
   it('汇总 prompt/输出/缓存读写并算出整体命中率', () => {
@@ -140,11 +140,11 @@ describe('aggregateUsage', () => {
       recordAt(now, { promptTokens: 1000, cacheReadTokens: 700, nonCachedInputTokens: 300, outputTokens: 20 }),
     ]
     const summary = aggregateUsage(records, { windowDays: 14, now })
-    expect(summary.total.calls).toBe(2)
-    expect(summary.total.promptTokens).toBe(2000)
-    expect(summary.total.outputTokens).toBe(30)
-    expect(summary.total.cacheReadTokens).toBe(1600)
-    expect(summary.total.cacheHitRate).toBeCloseTo(1600 / 2000, 10)
+    expect(summary.window.calls).toBe(2)
+    expect(summary.window.promptTokens).toBe(2000)
+    expect(summary.window.outputTokens).toBe(30)
+    expect(summary.window.cacheReadTokens).toBe(1600)
+    expect(summary.window.cacheHitRate).toBeCloseTo(1600 / 2000, 10)
   })
 
   it('按模型聚合，同一模型名在不同 provider 下分开统计', () => {
@@ -171,18 +171,100 @@ describe('aggregateUsage', () => {
     expect(summary.byModel.map(row => row.model)).toEqual(['large', 'mid', 'small'])
   })
 
-  it('空记录集时总数为零且命中率为 null', () => {
+  it('空记录集时三个口径都为零且命中率为 null', () => {
     const summary = aggregateUsage([], { windowDays: 14, now })
-    expect(summary.total.calls).toBe(0)
-    expect(summary.total.cacheHitRate).toBeNull()
+    expect(summary.window.calls).toBe(0)
+    expect(summary.today.calls).toBe(0)
+    expect(summary.allTime.calls).toBe(0)
+    expect(summary.window.cacheHitRate).toBeNull()
+    expect(summary.today.cacheHitRate).toBeNull()
+    expect(summary.allTime.cacheHitRate).toBeNull()
     expect(summary.firstRecordAt).toBeNull()
+    expect(summary.lastRecordAt).toBeNull()
     expect(summary.byDay).toHaveLength(14)
+  })
+
+  it('给出最早与最晚记录时间，用于「累计」的区间说明', () => {
+    const records = [recordAt(now - dayMs * 3), recordAt(now), recordAt(now - dayMs * 7)]
+    const summary = aggregateUsage(records, { windowDays: 14, now })
+    expect(summary.firstRecordAt).toBe(now - dayMs * 7)
+    expect(summary.lastRecordAt).toBe(now)
+  })
+
+  it('最晚记录时间取的是真实最新记录，不是窗口终点', () => {
+    // 窗口是 14 天，但最后一条记录在 2 天前 —— 区间右端应该是那天，
+    // 显示成"今天"会让人误以为数据是新的
+    const records = [recordAt(now - dayMs * 5), recordAt(now - dayMs * 2)]
+    const summary = aggregateUsage(records, { windowDays: 14, now })
+    expect(summary.lastRecordAt).toBe(now - dayMs * 2)
+    expect(summary.lastRecordAt).not.toBe(now)
   })
 
   it('无任何缓存读取时整体命中率为 0 而不是 null', () => {
     const records = [recordAt(now, { cacheReadTokens: 0, nonCachedInputTokens: 100 })]
     const summary = aggregateUsage(records, { windowDays: 14, now })
-    expect(summary.total.cacheHitRate).toBe(0)
+    expect(summary.window.cacheHitRate).toBe(0)
+  })
+
+  describe('今日 / 窗口 / 全部 三个口径', () => {
+    // 同一时刻的今天与 40 天前各一条：窗口口径只该看到今天那条，
+    // 全部口径两条都该看到。
+    const oldRecord = recordAt(now - dayMs * 40, { promptTokens: 700, cacheReadTokens: 600, nonCachedInputTokens: 100 })
+    const todayRecord = recordAt(now, { promptTokens: 1000, cacheReadTokens: 800, nonCachedInputTokens: 200 })
+
+    it('全部累计不受窗口限制，包含窗口外的记录', () => {
+      const summary = aggregateUsage([oldRecord, todayRecord], { windowDays: 14, now })
+      expect(summary.allTime.calls).toBe(2)
+      expect(summary.allTime.promptTokens).toBe(1700)
+      // 窗口口径只看得到窗口内的那条，两者必须能区分开
+      expect(summary.window.calls).toBe(1)
+    })
+
+    it('今日只统计本地时区当天，不含昨天', () => {
+      const yesterday = recordAt(now - dayMs, { promptTokens: 5555 })
+      const summary = aggregateUsage([yesterday, todayRecord], { windowDays: 14, now })
+      expect(summary.today.calls).toBe(1)
+      expect(summary.today.promptTokens).toBe(1000)
+      // 昨天那条仍然算进窗口与累计
+      expect(summary.window.calls).toBe(2)
+      expect(summary.allTime.calls).toBe(2)
+    })
+
+    it('今日口径与 byDay 里今天那格对得上', () => {
+      const yesterday = recordAt(now - dayMs, { promptTokens: 5555 })
+      const summary = aggregateUsage([yesterday, todayRecord], { windowDays: 14, now })
+      const todayBucket = summary.byDay[summary.byDay.length - 1]
+      expect(todayBucket?.calls).toBe(summary.today.calls)
+      expect(todayBucket?.promptTokens).toBe(summary.today.promptTokens)
+      expect(todayBucket?.cacheReadTokens).toBe(summary.today.cacheReadTokens)
+    })
+
+    it('当天凌晨的记录算今日 —— 跨零点按本地日期切，不按最近 24 小时', () => {
+      const justAfterMidnight = new Date(now)
+      justAfterMidnight.setHours(0, 5, 0, 0)
+      const summary = aggregateUsage([recordAt(justAfterMidnight.getTime())], { windowDays: 14, now })
+      expect(summary.today.calls).toBe(1)
+    })
+
+    it('每个口径各自算命中率，不相加也不复用别的口径的值', () => {
+      // 今天：1000 prompt，900 命中 → 90%
+      // 40 天前：1000 prompt，100 命中 / 900 未命中 → 10%
+      const old = recordAt(now - dayMs * 40, { promptTokens: 1000, cacheReadTokens: 100, nonCachedInputTokens: 900 })
+      const fresh = recordAt(now, { promptTokens: 1000, cacheReadTokens: 900, nonCachedInputTokens: 100 })
+      const summary = aggregateUsage([old, fresh], { windowDays: 14, now })
+      expect(summary.today.cacheHitRate).toBeCloseTo(0.9, 10)
+      expect(summary.window.cacheHitRate).toBeCloseTo(0.9, 10)
+      // 累计把两段合起来算：1000 / 2000
+      expect(summary.allTime.cacheHitRate).toBeCloseTo(0.5, 10)
+    })
+
+    it('窗口内没有任何记录时，窗口口径为零但累计仍有数', () => {
+      const summary = aggregateUsage([oldRecord], { windowDays: 14, now })
+      expect(summary.window.calls).toBe(0)
+      expect(summary.window.cacheHitRate).toBeNull()
+      expect(summary.allTime.calls).toBe(1)
+      expect(summary.allTime.cacheHitRate).toBeCloseTo(600 / 700, 10)
+    })
   })
 })
 
@@ -239,6 +321,6 @@ describe('renameProviderInRecords — 改名后同步历史记录', () => {
     const result = renameProviderInRecords(records, { providerId: 'p1', previousName: 'CPA-ant', nextName: 'CPA' })
     const summary = aggregateUsage(result.records, { windowDays: 14, now })
     expect(summary.byModel.map(row => row.provider).sort()).toEqual(['CPA', 'OTHER'])
-    expect(summary.total.calls).toBe(2)
+    expect(summary.window.calls).toBe(2)
   })
 })

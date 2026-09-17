@@ -664,8 +664,59 @@ export function initApp(Alpine: AlpineType) {
       return `${(rate * 100).toFixed(1)}%`
     },
 
-    usageTotals() {
-      return this.usageStats?.total ?? null
+    /**
+     * 按口径取合计。
+     *
+     * 面板上有三个口径，必须显式区分，否则用户看到的数字到底是哪一段的说不清：
+     *   today   —— 本地时区当天
+     *   allTime —— 全部记录（不受 14 天窗口限制）
+     *   window  —— 最近 14 天，趋势图与「按模型」表用（走 usageDays / usageModelRows）
+     */
+    usageScopeTotals(scope: 'today' | 'allTime') {
+      return this.usageStats?.[scope] ?? null
+    },
+
+    /** 口径标题 —— 放在对应数据块上方 */
+    usageScopeLabel(scope: 'today' | 'allTime'): string {
+      return scope === 'today' ? 'Today' : 'All time'
+    },
+
+    /**
+     * 口径副标题：说明这段数据覆盖的是哪一段时间。
+     *
+     * 「今日」给当天日期；「全部」给 firstRecordAt → lastRecordAt 的**起止区间**，
+     * 而不是原先的 "since <起点>"。
+     *
+     * 原来只给起点会读错：数据只攒了两天时，`since 2026-09-16` 里的 09-16 会被
+     * 当成"当前日期"（用户看到今天已是 17 号，就会以为面板没刷新）。写成
+     * `2026-09-16 → 2026-09-17` 一眼就是区间，两端都摆出来了。
+     *
+     * 区间右端取真实的最晚记录时间，不是"今天"：几天没用时显示"截至今天"会
+     * 让人以为数据是新的。
+     */
+    usageScopeSubtitle(scope: 'today' | 'allTime'): string {
+      const stamp = (timestamp: number): string => {
+        const date = new Date(timestamp)
+        const month = String(date.getMonth() + 1).padStart(2, '0')
+        const day = String(date.getDate()).padStart(2, '0')
+        return `${date.getFullYear()}-${month}-${day}`
+      }
+
+      if (scope === 'today') {
+        // 取 byDay 末格（窗口终点即今天），保证与趋势图那天完全一致
+        const todayKey = this.usageStats?.byDay?.length
+          ? this.usageStats.byDay[this.usageStats.byDay.length - 1]?.date
+          : null
+        return todayKey ? String(todayKey) : ''
+      }
+
+      const { firstRecordAt, lastRecordAt } = this.usageStats ?? {}
+      if (!firstRecordAt)
+        return ''
+      // 只有一天数据时给单个日期，`09-17 → 09-17` 是废话
+      if (!lastRecordAt || lastRecordAt === firstRecordAt)
+        return stamp(firstRecordAt)
+      return `${stamp(firstRecordAt)} → ${stamp(lastRecordAt)}`
     },
 
     /**
@@ -673,18 +724,25 @@ export function initApp(Alpine: AlpineType) {
      *
      * 面板上显示的是紧凑格式（166.6M），精确值只有悬浮才给 —— 跟其他指标一样，
      * 把 6~7 位数字铺在卡片里会把布局挤爆。顺带说清这个数包含什么：
-     * 缓存读取 + 未命中输入，也就是这一窗口真正发给模型的输入量。
+     * 缓存读取 + 未命中输入，也就是这段时间真正发给模型的输入量。
      */
-    usagePromptTitle(): string {
-      const totals = this.usageTotals()
+    usagePromptTitle(scope: 'today' | 'allTime'): string {
+      const totals = this.usageScopeTotals(scope)
       if (!totals)
         return ''
       const exact = Math.round(totals.promptTokens ?? 0).toLocaleString('en-US')
-      return `${exact} input tokens sent in this window — cache reads plus new tokens`
+      const range = scope === 'today' ? 'today' : 'across all recorded history'
+      return `${exact} input tokens sent ${range} — cache reads plus new tokens`
     },
 
+    /**
+     * 是否有任何数据。
+     *
+     * 判据用 allTime 而不是窗口：只按窗口判的话，超过 14 天没用的用户
+     * 会看到"暂无数据"，但累计区块其实是有数的。
+     */
     usageHasData(): boolean {
-      return (this.usageStats?.total?.calls ?? 0) > 0
+      return (this.usageStats?.allTime?.calls ?? 0) > 0
     },
 
     usageModelRows() {
@@ -775,6 +833,17 @@ export function initApp(Alpine: AlpineType) {
       const last = String(days[days.length - 1]?.date ?? '')
       const short = (value: string) => value.slice(5)
       return `${short(first)} → ${short(last)} · ${days.length} days`
+    },
+
+    /**
+     * 标题后缀用的窗口说明。
+     *
+     * 趋势图和「按模型」表都是 14 天窗口口径，但表头原本只写 "Daily prompt tokens"
+     * 和 "By model"，看不出这两个数到底统计了多久 —— 现在上面多了「今日/累计」
+     * 两块，不写清口径就更容易被误当成同一段时间。
+     */
+    usageRangeShort(): string {
+      return `last ${this.usageStats?.windowDays ?? 14}d`
     },
 
     // ── 二次确认弹窗 ──
