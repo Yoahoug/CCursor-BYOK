@@ -1,131 +1,218 @@
 <p align="center">
+  English | <a href="README_CN.md">中文</a>
+</p>
+
+<p align="center">
   <img src="ccursor.png" width="120" alt="Cursor++" />
 </p>
 
 <h1 align="center">CCursor-BYOK</h1>
 
 <p align="center">
-  <strong>Cursor++（BYOK for Cursor IDE）的个人二改版</strong><br/>
-  在 Cursor 里用自己的 API Key / 中转站驱动 Agent
+  <strong>Drive Cursor's Agent / Chat / Composer with your own API keys</strong><br/>
+  A personal, opinionated fork of Cursor++ (BYOK for Cursor IDE)
+</p>
+
+<p align="center">
+  <a href="https://github.com/Yoahoug/CCursor-BYOK/releases/latest"><img src="https://img.shields.io/github/v/release/Yoahoug/CCursor-BYOK?label=release" alt="Release" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue" alt="License" /></a>
+  <a href="https://github.com/CometixSpace/CCursor"><img src="https://img.shields.io/badge/upstream-Cursor%2B%2B%200.0.15-lightgrey" alt="Upstream" /></a>
 </p>
 
 ---
 
-## 这是什么
+## What is this?
 
-本项目是 [CometixSpace/CCursor](https://github.com/CometixSpace/CCursor)（Cursor++）的
-**第三方修改版（fork / 二改版）**。
+A third-party fork of [CometixSpace/CCursor](https://github.com/CometixSpace/CCursor)
+(**Cursor++**). It keeps upstream's architecture — a local BYOK server inside Cursor's
+extension host that intercepts ConnectRPC/REST traffic and routes LLM requests to the
+providers you configure — and rebuilds the parts I hit problems with in daily use.
 
 | | |
 |---|---|
-| 上游项目 | <https://github.com/CometixSpace/CCursor> |
-| 上游作者 | CometixSpace |
-| 上游许可 | AGPL-3.0-or-later |
-| 本项目基于 | 上游 `0.0.15` |
-| 本项目版本 | `0.0.26` |
-| 维护者 | [@Yoahoug](https://github.com/Yoahoug)（非上游作者） |
+| Upstream project | <https://github.com/CometixSpace/CCursor> |
+| Upstream author | CometixSpace |
+| Upstream license | AGPL-3.0-or-later |
+| Forked from | upstream `0.0.15` |
+| This version | `0.0.26` |
+| Maintainer | [@Yoahoug](https://github.com/Yoahoug) (not the upstream author) |
 
-上游 Cursor++ 的完整功能介绍与架构说明见 [README_UPSTREAM_CN.md](./README_UPSTREAM_CN.md)
-（英文版 [README_UPSTREAM.md](./README_UPSTREAM.md)）。
+Full upstream feature list and architecture notes:
+[README_UPSTREAM.md](./README_UPSTREAM.md) (English) ·
+[README_UPSTREAM_CN.md](./README_UPSTREAM_CN.md) (中文).
+Every change below is documented with its root cause in [CHANGELOG.md](./CHANGELOG.md).
 
-> **免责声明**
-> 本项目与上游作者 CometixSpace 无隶属关系，也不是官方发布渠道。
-> 所有改动的正确性、稳定性由本项目自行承担，请勿向上游项目提交与本二改相关的 issue。
-> 如需上游原始功能与官方支持，请直接使用上游仓库。
-
----
-
-## 我改了什么
-
-相对上游的主要改动概览。每一条的起因、根因分析与实现细节见 [CHANGELOG.md](./CHANGELOG.md)。
-
-**Web Tools —— 搜索与抓取**
-
-- **修复 Web Search 静默失败**（核心修复）—— DuckDuckGo 的反爬页返回 **HTTP 202**，落在 2xx 区间被 `response.ok` 判为成功，于是人机验证页上的 `About DuckDuckGo` / `/lite` / `here` 等导航链接被当成搜索结果喂给了模型。现在会识别挑战页特征并抛错，删除了「抓取全页链接」的危险兜底，兜底也不再无视 provider 的 `enabled` 开关。
-- **搜索 / 抓取支持自定义 Base URL** —— Tavily 地址原先硬编码为官方端点，无法指向自建中转站。现可在面板填写；抓取侧复用搜索侧的 key 与地址，不必重复配置。
-- **抓取默认改用 Tavily Extract** —— 内置抓取由本机直连发起，遇 Cloudflare 挑战页必被 403（换 Chrome / curl / Googlebot 的 UA 均无效），Tavily 从服务端出口发起可穿透；另支持把 Discourse 论坛 JSON 还原成带楼层号的 markdown。
-- **服务商列表精简** —— 搜索 6 → 2，抓取 3 → 2。移除的仅是**面板入口与默认配置项**，实现代码保持原样，仍可通过手写 `~/.ccursor/web-tools.json` 使用。
-
-**Provider 配置**
-
-- **协议由「中转站级」下沉到「模型级」** —— 一个中转站（一个地址、一个 Key）通常同时挂 gpt / gemini / glm / deepseek，各家接口形态不同，而分流在中转站内部完成。协议现挂在模型上，未手动选择时按模型名推导并固化进配置。
-- **地址只填前缀，版本段由协议补全** —— Anthropic 与 OpenAI 两边 SDK 对 baseURL 该不该带 `/v1` 的要求**正好相反**，因此一个 baseURL 不可能同时喂对两家模型。现在只填前缀，版本段与请求路径按生效协议拼接；老配置里多余的版本段会被自动剥掉，而非拼成 `/v1/v1/messages`。
-- **模型连通性测试与协议自动探测** —— 面板内发一次真实请求探活（与正式调用走同一条代码路径），Auto-detect 可逐个协议试出该模型实际可用哪一种。
-
-**可观测性与发布**
-
-- **用量统计仪表盘** —— 缓存命中率、每日趋势、按模型与中转站归因。各协议对「输入 token」的口径不同（Anthropic 不含缓存读写，OpenAI / Gemini 已含 cached 子集），落统计前统一归一化。
-- **更新检测改走本仓库 Release** —— 原检测指向 npm 上的官方版，其更新命令会把二改整个覆盖掉；现读取本仓库 Release 并支持一键下载安装。
-- **发布改为本地一键构建** —— 移除线上构建链路（`release.yml` / `ci.yml`），改用 `node scripts/release.mjs` 完成构建 → 打包 → 更新本机扩展 → 推送发布，默认同步本地，保证「发出去的版本 = 本机在跑的版本」。
-
-**界面**
-
-- 浮层改毛玻璃（原背景在浮层上等于全透明）、协议选择器一行居中、指标卡重排，并删掉与命中率口径重复的冗余卡片。
+> **Disclaimer**
+> This project is not affiliated with CometixSpace and is not an official distribution
+> channel. Correctness and stability of the changes here are my own responsibility —
+> please do not file issues about them against upstream. If you want upstream features
+> and official support, use the upstream repository directly.
 
 ---
 
-## 安装
+## What this fork changes
 
-### 重要：不能拖拽 VSIX 安装
+Grouped by area. Each item is a change on top of upstream `0.0.15`, not an upstream feature.
 
-这个项目由**两部分**组成，拖 VSIX 只能完成一半：
+### Web Search & Fetch
 
-| 组件 | 内容 | 拖 VSIX 能做到吗 |
+| Change | Why |
+|---|---|
+| **Fixed Web Search silently returning garbage** | DuckDuckGo answers scraped requests with **HTTP 202 + a CAPTCHA page**. `202` is in the 2xx range, so `response.ok` was `true` and nothing looked wrong. The fallback then scraped *every `<a>` on the page*, feeding the model navigation links (`About DuckDuckGo`, `/lite`, `here`) as search results. Now the challenge page is detected and throws; the dangerous "scrape all links" fallback is **gone**, and the fallback respects the `enabled` flag instead of hardcoding DuckDuckGo. |
+| **Custom Base URL for search and fetch** | Tavily's endpoint was hardcoded, so a self-hosted relay or proxy gateway could not be used. Now configurable in the panel; fetch reuses the search side's key and URL instead of asking twice. |
+| **Test connection button** | Runs through the *same* code path as a real search (`searchWithProvider`), so it validates reachability, key validity and response parsing at once — not just "the port is open". |
+| **Fetch defaults to Tavily Extract** | The built-in fetcher goes out from your machine and always loses to Cloudflare challenge pages (`linux.do` → `HTTP/2 403`, `cf-mitigated: challenge`; spoofing Chrome / curl / Googlebot UA changes nothing). Tavily fetches server-side and gets through. |
+| **Discourse JSON → Markdown** | Fetching `https://<forum>/t/topic/<id>.json` returns raw JSON (20 posts ≈ 90–135KB), which used to be truncated by the 100k character cap with everything HTML-escaped. It is now rendered as Markdown with post numbers, and `?page=N` pagination works (verified 12/12 pages on a 1,947-post thread). |
+| **Two-layer fallback that reports both failures** | Missing key or a failed Tavily call falls back to the built-in fetcher — but a misconfigured Base URL would otherwise surface only as the built-in fetcher's 403, looking like "Tavily never took effect". Both causes are now raised together. |
+| **Trimmed provider lists** | Search 6 → 2, fetch 3 → 2. Only the *panel entries and defaults* were removed — the implementations (`searchExa`, `searchBrave`, `searchJina`, `searchFirecrawl`) are untouched and still usable by editing `~/.ccursor/web-tools.json`. |
+| **Legacy configs normalized on read** | Retired values such as `fetch.jina` / `fetch.firecrawl` are mapped to the current default automatically; no manual cleanup. |
+
+### Provider & protocol handling
+
+| Change | Why |
+|---|---|
+| **Protocol moved from relay level to model level** | A single relay (one URL, one key) almost always serves `gpt` / `gemini` / `grok` / `glm` / `deepseek` at once, each with a different wire format — and the relay does the dispatch internally. Users cannot reasonably answer "which protocol is this relay?", and splitting one URL into several provider entries means retyping the key. The protocol now lives on `ProviderModel.type`. |
+| **Address is a prefix; the protocol supplies the version segment** | The two SDKs disagree about `/v1`, which makes one base URL mathematically unable to serve both Anthropic and OpenAI models: with `/v1` Anthropic becomes `/v1/v1/messages`; without it OpenAI hits `/chat/completions` while the relay serves `/v1/chat/completions` and 404s. You now enter a bare prefix, and the request path is composed per model. Legacy addresses carrying a redundant version segment are stripped rather than doubled. |
+| **Model connectivity test** | Sends one real request through the identical path a production call takes (URL composition, auth, parameter assembly, SSE parsing), so a pass really means "usable". The prompt is deliberately designed for measurement — asking the model to count to 120 yields ~600 stable tokens, whereas a ping's one or two tokens would be drowned out by time-to-first-token. Thinking models report **two** first-token metrics, since their first event is a reasoning token rather than content. |
+| **Auto-detect protocol** | There is no reliable mapping from model name to wire format (`glm-4.6` may go either way), so the only way to know is to try. Auto-detect probes each protocol serially (to avoid rate limits), starting with the currently effective one, and writes the winner back into the config. |
+| **Inference rules live in exactly one place** | `src/shared/providerProtocol.ts`. The server does not re-implement them — otherwise the UI could say "Anthropic" while requests actually went out as OpenAI. |
+
+### Usage dashboard
+
+| Change | Why |
+|---|---|
+| **`~/.ccursor/usage-stats.jsonl` + dashboard** | One record per completed turn, driving cache hit rate, daily trend, and per-model / per-relay attribution. |
+| **Cache hit rate as the headline metric** | The question worth answering is "is my relay actually doing prefix caching?", not "how many tokens total". |
+| **Token accounting normalized across protocols** | Each protocol defines input tokens differently — Anthropic's `input_tokens` *excludes* cache reads/writes, while OpenAI's `prompt_tokens` and Gemini's `promptTokenCount` *include* cached tokens as a subset. Summing them naively under-counts Anthropic and double-counts OpenAI. |
+| **Attribution keyed by stable `providerId`** | Display names are user-editable; renaming a relay used to split its history into two rows and scatter the hit rate. |
+| **Today vs. all-time split** | There was a single total whose semantics were "last 14 days" without saying so, which reads as "all time" and quietly shrinks as the window rolls. Now `today` (local timezone), `allTime`, and `window` (14 days, for the trend and per-model tables) are computed in one pass and labelled. |
+| **Fixed hover tooltip flashing an empty box** | Closing and clearing were the same action, so during the 120ms fade-out `x-text` and `x-for` had no data: the box shrank to `min-width` + padding and its `left` fell back to `50%`, blinking an empty box in the middle of the chart before vanishing. |
+
+### Update & release
+
+| Change | Why |
+|---|---|
+| **Update check reads this fork's GitHub Release** | It used to query `@cometix/ccursor` on npm and prompt `npx @cometix/ccursor update` — which installs the **official build** and overwrites every change here. It now reads this repository's Release (public, anonymous, no token) and offers **Update Now** (downloads the attached `.vsix`, extracts and overwrites in place), **Release Notes**, and **Later**. |
+| **Manual "Check for Updates" button in the panel** | The only path used to be the background check's popup. The button completes "check → install if available" in one click, with its label tracking the phase (`Checking…` / `Updating to x.y.z…`) from a single source of truth. |
+| **Fixed updates failing 100% of the time on Windows** | Extraction hardcoded `unzip`, but Windows 10+ ships bsdtar (`tar`), not `unzip` — so the update died with ENOENT at the extraction step. Now the command is chosen per platform with a fallback. `installer/` and `scripts/release.mjs` had always done this; only the in-extension updater was missed. |
+| **Local one-command release** | Online CI/release workflows were removed (build agents have no Cursor, so native-module failures were hard to reproduce remotely). `node scripts/release.mjs` does build → package → update the local extension → tag → push → `gh release create`. |
+| **Local extension updated by default, with backups** | Shipping only a Release leaves the machine running old code — this repo hit exactly that trap, with an unchanged version number hiding it. Local install runs *before* the push so "cannot install" surfaces before a public Release exists. Old versions are backed up to `~/.ccursor/backups/` (last 3 kept) — deliberately not `/tmp`, which gets wiped on reboot. |
+| **Fixed the release script being unusable on Windows** | Node refuses to `spawnSync` a `.cmd` / `.bat` (CVE-2024-27980), failing with `EINVAL` — on the very platform Cursor primarily runs on. All CLIs are now invoked as `process.execPath` + in-package JS entry. |
+
+### UI / UX
+
+| Change | Why |
+|---|---|
+| **Dropdowns and overlays use real glass instead of "4% ink"** | Overlays reused `--cpp-surface`, which is the current foreground at 4% opacity — fine as a card background, but as an overlay base it is effectively transparent: the text underneath showed straight through and interleaved with the options. Overlays now sit on the theme's `editorWidget` background plus a backdrop blur. |
+| **Modal and floating panels are opaque** | A modal covers existing content, so transparency is actively harmful — the form's labels bled through and doubled up with the dialog's own text. Shadows switched to black as well, because `--cpp-ink` is near-white in dark themes and produced a glowing halo instead of a shadow. |
+| **Protocol selector laid out on one line** | The three-way segmented control was `flex-direction: column`; at ~60px per segment, `Anthropic Messages` wrapped to two lines and left the buttons with mismatched heights. Now single-line, centred, with short labels and full names in the tooltip. |
+| **Dashboard metric cards rearranged** | `Cache Write` displayed `nonCachedInputTokens` — the same quantity already shown as `4.2M new` under the hit-rate card, i.e. one dataset drawn twice, one of them labelled `est.`. That card was removed in favour of an explicit **Prompt total** (cache reads + uncached input). |
+| **Fixed the reveal-password icon not rendering** | The icon comes from Cursor's own `codicon.ttf`, which lives outside the extension directory, so it must be declared in `localResourceRoots` — note that setting that field *replaces* the default, so the extension directory has to be listed too. Without it the font request was blocked, silently fell back to a system font, and the private-use codepoints rendered as missing-glyph boxes. |
+| **Drag-to-reorder models** | Cursor's model picker renders `models[]` in `providers.json` order, so put frequently used models first. The real array is reordered (going through the normal draft → dirty → save flow), not just the view. Insertion is decided by the card's midline rather than mouse travel direction, and the array is only touched on drop so the list does not reshuffle under the cursor. |
+| **Readable names in the remote model list** | Some relays obfuscate ids beyond recognition (e.g. `flash` reversed to `hsalf`), making a list of ids useless. The primary line is now `display_name` with the real id beneath it in monospace. Three parsing gaps were fixed alongside: only camelCase `displayName` was read (that relay returns snake_case, so the readable name was dropped entirely), timestamps were handled as seconds only, and `{ data: [...] }` / `{ models: [...] }` envelopes were not unwrapped. |
+| **Confirmation dialogs for destructive actions** | Deleting a relay or removing a model now asks first and states the impact. |
+
+### Reliability, performance & security
+
+From a full-repository audit (report in [AUDIT.md](./AUDIT.md)). The conclusion was that the
+existing design held up — these are targeted fixes.
+
+| Change | Why |
+|---|---|
+| **Fixed a private-network guard that did not guard** | `isValidUrl` compared `new URL().hostname` against literals, but for IPv6 that field is **bracketed** and trailing dots are preserved: `http://[::1]/` → `"[::1]"`, `http://[::ffff:127.0.0.1]/` → `"[::ffff:7f00:1]"`, `http://[fd00::1]/`, `http://localhost./`. The "WebFetch must not reach localhost or the LAN" guard failed for all of them. The inverse was broken too — `/^(10\.\|127\.)/` on the hostname flagged ordinary domains like `10.example.com` as private. Hostnames are now normalized (brackets stripped, trailing dot removed), only real IPv4 literals take part in range checks, IPv4-mapped IPv6 is reduced to dotted-quad first, and `fc00::/7`, `fe80::/10`, `100.64/10`, `169.254/16` and the whole `127/8` are covered. |
+| **Removed super-linear backtracking in the skill frontmatter regex** | `/^---\s*\n([\s\S]*?)\n---/` — `\s` includes `\n`, so `\s*` and the following `\n` competed for the same newlines. It runs **synchronously** in the extension host over workspace `SKILL.md` files of unbounded length: a malformed 40KB file took **254ms**. Now **0.02ms**, with no regression on valid files. The fix must be a single `\n` rather than `\n+`, otherwise the backtracking just moves. |
+| **context breakdown 97% faster** | `buildContextBreakdown` called `countTokens` separately for the system prompt, every tool schema and each preamble paragraph — byte-identical across turns in a session, re-encoded every turn (a 44KB system prompt ≈ 0.9ms). A bounded LRU (cap 500, so long sessions cannot grow unboundedly) took the steady-state path from **13.8ms to 0.55ms**. |
+| **Silent failures now log** | Skipping an undecodable blob left no trace at all, so users just saw "the context got shorter for no reason". Now a `logger.warn` with an `undecodableBlobs` count. Same for a corrupted canvas directory. The remaining 19 `catch` blocks were reviewed and are correct visible failures. |
+| **Unbounded memory and a TDZ hazard** | The blob memory cache had no cap while `cleanupBlobCache()` had zero callers, and each blob is a whole message body (hundreds of KB with tool results) — cleanup now triggers past 10,000 entries. `waitForMessageMatching`'s `cleanup` referenced a `const timer` before initialization, which throws `ReferenceError` on the "no timeout, listener fires synchronously" path. |
+| **`handlers/` `services/` `database/` brought into lint** | Those directories were excluded wholesale, leaving ~9,000 lines of core agent logic unchecked — the largest static-analysis blind spot in the repo. Only one local exemption remains, for literal leading tabs inside a template string that is part of a tool description sent to the model. **Also fixed a gate trap**: `pnpm run lint` silently disabled some rules when `VSCODE_PID` was set, so "0 errors" was partly fictional; `CI=true` gives the full rule set. |
+| **Structural splits and tests** | `conversationRuntime.ts` (1,316 lines) split into `contextBreakdown` / `editStreamExtractor` / `editStreamDiagnostics`; `parseRunRequest.ts` split out `protocol/mcpNormalization.ts`; webview pure helpers moved out of `app.ts`. Each split was pure-move first, then change, in separate commits. Tests went from 442 to 506, locking in every fix above. |
+| **One retreat, documented** | Rewriting the patch-header regex to `[^\S\n]+` *looked* safer but broke real inputs: with `\s` matching `\n`, the original still finds a path when `File:` is followed directly by a newline, while the rewrite matches nothing (53,428 of 400,000 random inputs regressed). Performance was equivalent, so the original was kept with an inline lint exemption. |
+
+### Development
+
+`npm run dev:ui` runs the panel in a browser using the **real** `panel-provider`, webview
+code, config store, usage stats and model tests — only the host layer is substituted
+(the `vscode` module, `acquireVsCodeApi`, and the port-grabbing `src/server`). Previously,
+verifying a UI change meant a full build → overwrite the extension directory → restart cycle,
+which made iterating on spacing and colours impractical. The preview script and its output
+are not shipped in the VSIX.
+
+### Known limitations
+
+- **Dynamic-DNS hostnames** (e.g. `127.0.0.1.nip.io`) still bypass the private-network guard,
+  and a redirect's final address is not re-checked — a pre-existing gap, not made worse here,
+  but the SSRF protection is still incomplete.
+- **Only the extension body is covered by this fork's fixes.** Anything in
+  `installer/src/patch-*.js` (the injection into Cursor itself) is untouched.
+
+---
+
+## Install
+
+### Important: do not install by dragging the VSIX
+
+There are **two** parts, and dragging the VSIX only does half the job:
+
+| Component | What it is | Can a dragged VSIX do it? |
 |---|---|---|
-| 扩展本体 | `cursor2plus` 扩展文件 | ❌ 只会装进用户扩展目录 `~/.cursor/extensions/`，而它需要的是 Cursor 安装目录下的 `resources/app/extensions/` |
-| **三处补丁** | 修改 `workbench.desktop.main.js`、`workbench.glass.main.js`、`extensionHostProcess.js`，并更新 `product.json` 中这三个文件的 SHA256 校验和 | ❌ **完全不做** |
+| Extension body | the `cursor2plus` extension files | ❌ it only lands in the user extension directory `~/.cursor/extensions/`, while Cursor needs it under `resources/app/extensions/` in its **install** directory |
+| **Three patches** | modifications to `workbench.desktop.main.js`, `workbench.glass.main.js`, `extensionHostProcess.js`, plus updated SHA256 checksums for those three files in `product.json` | ❌ **not done at all** |
 
-补丁未生效时，扩展形同摆设 —— 请求根本不会路由到 BYOK 服务器；且 `product.json`
-校验和不匹配还会让 Cursor 报「安装已损坏」。
+Without the patches the extension is inert — requests never reach the BYOK server — and the
+stale `product.json` checksums make Cursor report the installation as corrupted.
 
-**因此必须使用安装器。**
+**Use the installer.**
 
-### 方式一：安装本二改版（完整安装）
+### Option 1: full install of this fork
 
 ```bash
-# 1. 克隆本仓库
+# 1. Clone
 git clone https://github.com/Yoahoug/CCursor-BYOK.git
 cd CCursor-BYOK
 
-# 2. 装依赖（Cursor++ 用 pnpm，installer 用 npm）
+# 2. Dependencies (pnpm for Cursor++, npm for installer)
 cd Cursor++ && pnpm install && cd ..
 cd installer && npm install && cd ..
 
-# 3. 构建扩展 → 打包 VSIX → 构建 CLI
+# 3. Build extension → package VSIX → build CLI
 cd installer && npm run build:all && cd ..
 
-# 4. 安装（需先完全退出 Cursor）
+# 4. Install (quit Cursor completely first)
 node installer/dist/cli.cjs install
+
+# 5. Verify
+node installer/dist/cli.cjs status
 ```
 
-> 若已装过上游版本，需先 `node installer/dist/cli.cjs uninstall` 再 `install`。
-> `uninstall` 会从备份还原被修改的 Cursor 文件，**执行前必须完全退出 Cursor**，
-> 否则文件被占用会导致失败。
+> Coming from upstream, run `node installer/dist/cli.cjs uninstall` first, then `install`.
+> `uninstall` restores the patched Cursor files from backup and **requires Cursor to be fully
+> closed**, otherwise locked files make it fail.
 
-### 方式二：只替换扩展本体（增量更新，最省事）
+### Option 2: replace the extension body only (incremental, easiest)
 
-如果你**只修改了 `Cursor++/src/` 下的内容**（如搜索逻辑、面板 UI），
-而 `installer/src/patch-*.js`（对 Cursor 本身的注入逻辑）未改动，
-则无需走完整的卸载重装，只替换扩展目录即可。
+If you only changed things under `Cursor++/src/` (search logic, panel UI) and left
+`installer/src/patch-*.js` alone, there is no need to uninstall and reinstall.
 
-好处是**无需关闭 Cursor**，也不触碰已打好的补丁。仓库里已带一键脚本：
+The advantage: **Cursor can stay open**, and existing patches are left untouched.
 
 ```bash
 node scripts/release.mjs --local-only
 ```
 
-它会完成构建 → 打包 → 覆盖本机扩展目录（并备份旧版本到 `~/.ccursor/backups/`），
-但不提交、不推送、不发 Release，可以反复跑。重启 Cursor 后生效。
+This builds → packages → overwrites the local extension directory (backing up the old
+version to `~/.ccursor/backups/`) without committing, pushing or creating a Release, so it
+can be re-run freely. Restart Cursor to apply. Since `0.0.26` you can also use the panel's
+**Check for Updates** button to pull the latest published Release the same way.
 
 <details>
-<summary>想手工操作（不跑脚本）</summary>
+<summary>Doing it by hand instead</summary>
 
 ```powershell
-# 构建
+# Build
 cd <repo>\installer
 npm run build:all
 
-# 解压 VSIX 并覆盖扩展目录
+# Extract the VSIX over the extension directory
 $vsix = "<repo>\installer\vsix\cursor2plus-<version>.vsix"
 $tmp  = "$env:TEMP\ccursor-ext"
 Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
@@ -133,44 +220,67 @@ New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 Copy-Item $vsix "$tmp\v.zip"
 tar -xf "$tmp\v.zip" -C $tmp
 
-# 目标目录（请按你的实际安装路径调整）
+# Target directory (adjust to your actual install path)
 $target = "$env:LOCALAPPDATA\Programs\cursor\resources\app\extensions\cursor2plus"
 robocopy "$tmp\extension" $target /E
 ```
 
-> **注意**：Windows 上 `dist\supermarkdown.win32-x64-msvc.node` 等原生模块可能被正在运行的
-> Cursor 占用而无法覆盖。若新旧文件内容一致（未改动依赖）则完全无影响；
-> `robocopy` 报 `ERROR 32` 时可忽略。
+> **Note**: on Windows the native modules (`dist\supermarkdown.win32-x64-msvc.node` and
+> friends) may be locked by a running Cursor. If the bytes are unchanged this is harmless;
+> a `robocopy` `ERROR 32` can be ignored.
 
 </details>
 
-### 方式三：使用上游官方安装器
+### Option 3: upstream's official installer
 
-若你不需要本二改版，只想用上游原版：
+If you do not want this fork and just want upstream:
 
 ```bash
 npx @cometix/ccursor install
-npx @cometix/ccursor status    # 检查状态
-npx @cometix/ccursor uninstall # 卸载还原
+npx @cometix/ccursor status    # check status
+npx @cometix/ccursor uninstall # uninstall and restore
 ```
 
-> 这条命令装的是**上游官方版**，本仓库的改动**不会**包含在内。
-> 反之，如果你已经装了本二改版，**不要**用它来更新 —— 会把二改的地方整个覆盖掉。
-> 本二改版请用方式一 / 方式二。
+> This installs the **upstream official build** and none of the changes here.
+> Conversely, if you already run this fork, do **not** use it to update — it overwrites
+> everything. Use Option 1 or 2 instead.
 
 ---
 
-## 配置
+## Configure
 
-配置文件位于 `~/.ccursor/`：
+Config files live in `~/.ccursor/`:
 
-| 文件 | 用途 |
+| File | Purpose |
 |---|---|
-| `web-tools.json` | 搜索 / 抓取服务商配置 |
-| `providers.json` | 中转站（Base URL + Key）与模型定义 |
-| `routes.json` | BYOK 开关与重定向白名单 |
+| `providers.json` | relays (Base URL + key) and model definitions |
+| `web-tools.json` | search / fetch provider configuration |
+| `routes.json` | BYOK switch and redirect whitelist |
+| `usage-stats.jsonl` | per-turn usage records backing the dashboard |
 
-以上三项都可在 Cursor++ 侧边栏面板里可视化编辑，手改文件适合批量调整或备份恢复。
+All three config files can be edited visually in the Cursor++ sidebar panel; editing them by
+hand is convenient for bulk changes or backup/restore.
+
+### `providers.json`
+
+**A relay's `baseUrl` should be the bare domain / port — no `/v1`, `/v1beta` or other version
+segment.** The version segment and request path are supplied per model by the effective
+protocol:
+
+| Protocol | Actual request path |
+|---|---|
+| Anthropic Messages | `<prefix>/v1/messages` |
+| OpenAI Chat Completions | `<prefix>/v1/chat/completions` |
+| OpenAI Responses | `<prefix>/v1/responses` |
+| Gemini | `<prefix>/v1beta/models/<model>:streamGenerateContent` |
+
+That is why different vendors under one prefix each compose correctly — and why the protocol
+lives on the model rather than the relay (one relay commonly serves gpt / gemini / glm / claude).
+
+> A prefix that already contains the version segment is not doubled
+> (`.../v1` + Anthropic → `.../v1/messages`), so old configs keep working. The real trap is
+> entering a **complete endpoint** as the prefix (e.g. `.../v1/messages`), which appends the
+> path twice.
 
 ### `web-tools.json`
 
@@ -196,89 +306,98 @@ npx @cometix/ccursor uninstall # 卸载还原
 }
 ```
 
-- `search.providers` —— 面板里可选 Tavily（支持自定义 `baseUrl`）与 DuckDuckGo（免费兜底，
-  但常被反爬拦下）
-- `baseUrl` 留空或省略 → 使用官方 `https://api.tavily.com`
-- `fallbackToDuckDuckGo` 设为 `false` → 搜索失败时直接报错，不做任何兜底
-- `fetch.provider` —— `tavily`（默认，复用上面 Tavily 的 key / baseUrl）或
-  `builtin`（本机直连，无法访问 Cloudflare 站点）
-
-### `providers.json`
-
-**中转站的 `baseUrl` 只填到域名 / 端口即可，不要带 `/v1`、`/v1beta` 这类版本段。**
-版本段与请求路径由每个模型各自生效的协议决定，会自动补全：
-
-| 协议 | 实际请求路径 |
-|---|---|
-| Anthropic Messages | `<前缀>/v1/messages` |
-| OpenAI Chat Completions | `<前缀>/v1/chat/completions` |
-| OpenAI Responses | `<前缀>/v1/responses` |
-| Gemini | `<前缀>/v1beta/models/<model>:streamGenerateContent` |
-
-因此同一个前缀下挂不同厂商的模型，各自都能拼对地址 —— 这也是**协议挂在模型上、
-而不是中转站上**的原因（一个中转站通常同时挂着 gpt / gemini / glm / claude）。
-面板里为每个模型选好协议即可；没手动选过的会按模型名推导，并在保存前固化进配置。
-
-> 前缀里若已带该协议的版本段，不会被重复拼接（`.../v1` + Anthropic → `.../v1/messages`），
-> 老配置可以继续用。真正的坑是**把完整端点当前缀填进来**（如 `.../v1/messages`），
-> 那样路径会拼两遍。
+- `search.providers` — the panel offers Tavily (custom `baseUrl` supported) and DuckDuckGo
+  (free fallback, frequently blocked by anti-bot)
+- `baseUrl` empty or omitted → the official `https://api.tavily.com`
+- `fallbackToDuckDuckGo: false` → fail loudly instead of falling back
+- `fetch.provider` — `tavily` (default, reuses the Tavily key / baseUrl above) or `builtin`
+  (local fetch; cannot reach Cloudflare-protected sites)
 
 ---
 
-## 更新
+## Update
 
-扩展会定期（最长 4 小时）检查本仓库的 GitHub Release。检测到新版本时会提示：
+The extension checks this repository's GitHub Release periodically (at most every 4 hours).
+When a new version appears you get **Update Now** (downloads the Release `.vsix` and
+overwrites the extension directory in place — **restart Cursor** afterwards), **Release
+Notes**, and **Later** (skip that version).
 
-- **Update Now** —— 自动下载该 Release 的 `.vsix` 并就地覆盖扩展目录，完成后**需重启 Cursor**
-- **Release Notes** —— 跳转该版本的 Release 页
-- **Later** —— 该版本不再提醒
+To skip the wait, the panel's **Config** tab has a **Check for Updates** button beneath
+`Edit Routes` / `Edit providers.json`: one click performs "check → install if available"
+and reports the outcome inside the panel. While it runs, the label becomes `Checking…` /
+`Updating to x.y.z…` and the button is disabled to prevent double-triggering.
 
-不想等的话，面板「Config」页底部有 **Check for Updates** 按钮（在 `Edit Routes` /
-`Edit providers.json` 下方），点一下即完成「检查 → 有则安装」，过程与结果都在面板内提示。
-按钮进行中会变成 `Checking…` / `Updating to x.y.z…` 并暂时禁用，避免重复触发。
-
-发布通道完全由本仓库掌控，不依赖 npm 上是否存在同名包。
+The update channel is entirely controlled by this repository and does not depend on any
+package existing on npm.
 
 <details>
-<summary>维护者：如何发版</summary>
+<summary>Maintainer: how to release</summary>
 
-改动记录写进 [`CHANGELOG.md`](./CHANGELOG.md)，然后：
+Write the changes into [`CHANGELOG.md`](./CHANGELOG.md), then:
 
 ```bash
-node scripts/release.mjs --bump patch       # 升版本 → 构建 → 打包 → 更新本地 → 推送发布
-node scripts/release.mjs --local-only       # 只构建 + 更新本地，不推送、不发 Release
-node scripts/release.mjs --dry-run          # 只构建 + 校验，不写本地、不推任何东西
-node scripts/release.mjs --no-install       # 只发版，不动本机扩展
+node scripts/release.mjs --bump patch       # bump → build → package → update local → push & release
+node scripts/release.mjs --local-only       # build + update local only; no commit, push or Release
+node scripts/release.mjs --dry-run          # build + verify only; touches nothing
+node scripts/release.mjs --no-install       # release only; leave this machine's extension alone
 ```
 
-脚本会依次做：前置检查 → 版本一致性 → typecheck / lint / 单测 → 生产构建 →
-多端产物校验 → 打包 VSIX → 更新本地扩展 → 提交版本号 / 打 tag / 推送 / `gh release create`。
+The script runs: preflight → version consistency → typecheck / lint / unit tests → production
+build → multi-platform artifact check → package VSIX → update the local extension → commit
+the version bump / tag / push / `gh release create`.
 
-两个约定：
+Two conventions:
 
-1. **`Cursor++/package.json` 与 `installer/package.json` 的版本必须一致**，脚本按 `--bump` 同步升版
-2. 发布前**工作区必须干净** —— 脚本只提交这两个 `package.json`
+1. **`Cursor++/package.json` and `installer/package.json` must carry the same version** —
+   the script bumps both via `--bump`.
+2. **The working tree must be clean before releasing** — the script only commits those two
+   `package.json` files.
 
-前置条件：`gh` CLI 已登录（`gh auth status`）。`--local-only` 不需要，也不要求工作区干净。
+Requires the `gh` CLI to be logged in (`gh auth status`). `--local-only` does not, and does
+not require a clean tree.
 
-产物内含 macOS / Linux / Windows（x64 · arm64）全部原生模块，因此在任意平台构建出的
-VSIX 都能直接发给其他平台使用。
+Artifacts include every native module for macOS / Linux / Windows (x64 · arm64), so a VSIX
+built on any platform can be handed to users on any other platform.
 
 </details>
 
 ---
 
-## 上游项目
+## Troubleshooting
 
-关于 Cursor++ 的完整功能介绍、架构说明与一般性故障排查，请参阅上游仓库：
-
-- 仓库：<https://github.com/CometixSpace/CCursor>
-- npm：<https://www.npmjs.com/package/@cometix/ccursor>
+| Symptom | Fix |
+|---|---|
+| Cannot sign in after installing | Toggle BYOK **OFF** in the sidebar panel, sign in normally, then toggle it back on |
+| Model not found | Add the model in the sidebar panel, or edit `~/.ccursor/providers.json` |
+| LLM returns 401 / 403 / 404 | Check the key and base URL. Remember the base URL is a **prefix** — a complete endpoint gets the path appended twice |
+| Search returns useless nav links | Fixed in `0.0.16`; make sure you are not running an older build |
+| Fetch fails with 403 on some sites | Those sites sit behind Cloudflare. Add a Tavily key and keep `fetch.provider` as `tavily` |
+| Update fails while Cursor is running | Native modules may be locked. Fully quit Cursor and re-run; already-written files are skipped, so nothing is duplicated. From `0.0.26` on Windows this no longer fails at extraction |
+| Panel looks unchanged after an update | The extension directory's JS is loaded into memory — **restart Cursor** |
 
 ---
 
-## 许可
+## Documentation
 
-沿用上游的 **AGPL-3.0-or-later**，详见 [LICENSE](./LICENSE)。
+| File | Contents |
+|---|---|
+| [CHANGELOG.md](./CHANGELOG.md) | Every change with its root cause and the alternatives considered (中文) |
+| [AUDIT.md](./AUDIT.md) | The full repository audit behind the `0.0.23` changes (中文) |
+| [README_UPSTREAM.md](./README_UPSTREAM.md) · [中文](./README_UPSTREAM_CN.md) | Upstream's feature list and architecture |
 
-依据 AGPL，本二改版同样以该许可开源发布。
+---
+
+## Upstream
+
+Full feature list, architecture notes and general troubleshooting live upstream:
+
+- Repository: <https://github.com/CometixSpace/CCursor>
+- npm: <https://www.npmjs.com/package/@cometix/ccursor>
+
+---
+
+## License
+
+AGPL-3.0-or-later, inherited from upstream — see [LICENSE](./LICENSE).
+
+As required by the AGPL, this fork is released under the same license.
