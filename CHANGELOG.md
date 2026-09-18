@@ -8,6 +8,39 @@ fork 基准为上游 `0.0.15`。README 只负责「这是什么 / 怎么装 / �
 
 ---
 
+## 0.0.26 — 面板内手动检查更新，并修复 Windows 上装不上
+
+### 新增：面板里的 Check for Updates 按钮
+
+原先只有后台定时检查（4 小时一次）的弹窗通道，用户想主动确认「有没有新版本」
+只能等，或自己去翻 GitHub Release。现在配置页底部的 `Edit Routes` /
+`Edit providers.json` 下面多了一个按钮，点一下即完成「检查 → 有则安装」：
+
+- 标签随阶段变化：`Check for Updates` → `Checking…` → `Updating to x.y.z…`，
+  进行中禁用按钮，避免重复触发；状态只有一个来源（store 的 `updatePhase`），
+  不会出现「按钮写着已完成、实际还在装」这类不一致
+- 已是最新 → 提示当前版本；有新版本 → 下载 `.vsix` 就地覆盖，提示重启 Cursor
+- 与后台检查共用同一段安装逻辑（新抽出的 `installLatest`），两者行为保证一致；
+  差别只在呈现方式：手动触发只在面板内给 toast，不再额外弹系统通知
+
+按钮单独占一行，而不是和上面两个并排：那两个是「打开配置文件」，这个是「替换扩展本体」，
+语义不同，混在一行容易被当成第三份配置。
+
+### 修复：Windows 上更新必然失败
+
+`update-check.ts` 解压 `.vsix` 时写死了 `unzip`，但 Windows 10+ 自带的是 bsdtar
+（`tar` 能处理 zip），**并没有** `unzip` —— 于是更新一到解压就以 ENOENT 失败，
+等于这条通道在 Windows 上从未真正可用。现在按平台选命令（Windows 用 `tar`，
+macOS / Linux 用 `unzip`）并互相兜底一次。
+
+`installer/` 与 `scripts/release.mjs` 早就按平台区分了，只有扩展内这条就地更新漏了。
+
+### 说明
+
+改的是扩展自身代码，需**重启 Cursor** 才生效。因此本版本的按钮要等装完之后才能用；
+在装到 `0.0.26` 之前，升级仍走原有的后台弹窗（或 `node scripts/release.mjs`）。
+
+
 ## 0.0.25 — 修复 Web Tools 的 Test connection 卡在测试中
 
 ### 问题

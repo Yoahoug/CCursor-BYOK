@@ -22,7 +22,7 @@
 | 上游作者 | CometixSpace |
 | 上游许可 | AGPL-3.0-or-later |
 | 本项目基于 | 上游 `0.0.15` |
-| 本项目版本 | `0.0.25` |
+| 本项目版本 | `0.0.26` |
 | 维护者 | [@Yoahoug](https://github.com/Yoahoug)（非上游作者） |
 
 上游 Cursor++ 的完整功能介绍与架构说明见 [README_UPSTREAM_CN.md](./README_UPSTREAM_CN.md)
@@ -227,11 +227,15 @@ npx @cometix/ccursor uninstall # 卸载还原
 
 ## 更新
 
-扩展会定期检查本仓库的 GitHub Release。检测到新版本时会提示：
+扩展会定期（最长 4 小时）检查本仓库的 GitHub Release。检测到新版本时会提示：
 
 - **Update Now** —— 自动下载该 Release 的 `.vsix` 并就地覆盖扩展目录，完成后**需重启 Cursor**
 - **Release Notes** —— 跳转该版本的 Release 页
 - **Later** —— 该版本不再提醒
+
+不想等的话，面板「Config」页底部有 **Check for Updates** 按钮（在 `Edit Routes` /
+`Edit providers.json` 下方），点一下即完成「检查 → 有则安装」，过程与结果都在面板内提示。
+按钮进行中会变成 `Checking…` / `Updating to x.y.z…` 并暂时禁用，避免重复触发。
 
 发布通道完全由本仓库掌控，不依赖 npm 上是否存在同名包。
 
