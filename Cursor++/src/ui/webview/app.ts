@@ -217,6 +217,29 @@ export function initApp(Alpine: AlpineType) {
       this.toasts = this.toasts.filter((t: any) => t.id !== id)
     },
 
+    // ── 检查更新 ──
+    //
+    // 检查与安装是一件事（有新版本就直接装），所以只有一个按钮，用 updatePhase
+    // 表示它当前处在哪一步；结果通过 toast 呈现，不再单独占一块界面。
+    updatePhase: '' as '' | 'checking' | 'installing',
+    updateTargetVersion: '' as string,
+
+    checkForUpdates() {
+      if (this.updatePhase)
+        return
+      this.updatePhase = 'checking'
+      this.updateTargetVersion = ''
+      this.post('checkUpdate')
+    },
+
+    get updateButtonLabel(): string {
+      if (this.updatePhase === 'checking')
+        return 'Checking…'
+      if (this.updatePhase === 'installing')
+        return this.updateTargetVersion ? `Updating to ${this.updateTargetVersion}…` : 'Updating…'
+      return 'Check for Updates'
+    },
+
     // ── Autocomplete ──
     ac: null as { pid: string, mid: string, results: any[], selected: number, reqId: number } | null,
     acReqId: 0,
@@ -1778,6 +1801,20 @@ export function initApp(Alpine: AlpineType) {
         s.usageError = ''
         s.usageStats = msg.summary as UsageSummary
       }
+    }
+    else if (msg?.type === 'updateCheckProgress') {
+      s.updatePhase = msg.phase === 'installing' ? 'installing' : 'checking'
+      s.updateTargetVersion = typeof msg.version === 'string' ? msg.version : ''
+    }
+    else if (msg?.type === 'updateCheckResult') {
+      s.updatePhase = ''
+      s.updateTargetVersion = ''
+      if (msg.status === 'failed')
+        s.toast(String(msg.text || 'Update check failed.'), 'error', 8000)
+      else if (msg.status === 'updated')
+        s.toast(String(msg.text || 'Update installed.'), 'info', 10000)
+      else
+        s.toast(String(msg.text || 'You are on the latest version.'), 'info', 5000)
     }
     else if (msg?.type === 'toast') {
       s.toast(msg.text, msg.level || 'info', msg.duration ?? 4000)

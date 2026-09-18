@@ -105,6 +105,12 @@ const vscode = {
 
   env: { openExternal: () => Promise.resolve(true) },
 
+  // 预览里没有真实的扩展安装目录 —— 返回 undefined 让 update-check 走
+  // 「找不到扩展目录」那条正常错误分支，而不是在这里抛 TypeError。
+  extensions: {
+    getExtension: () => undefined,
+  },
+
   Uri: {
     file: value => ({
       fsPath: value,

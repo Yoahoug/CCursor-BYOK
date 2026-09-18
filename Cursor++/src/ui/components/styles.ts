@@ -986,7 +986,9 @@ export const styles = /* css */ `
   }
   .reveal-btn:hover:not(:disabled) { background: transparent; color: var(--cpp-text); }
 
-  .footer { margin-top: 16px; display: flex; gap: 6px; flex-wrap: wrap; }
+  /* 底部操作栏：两行分组，第一行是配置入口，第二行是「检查更新」 */
+  .footer { margin-top: 16px; display: flex; flex-direction: column; gap: 6px; }
+  .footer-row { display: flex; gap: 6px; flex-wrap: wrap; }
 
   /* ── Toast ────────────────────────────────────────────── */
   .toast-container {

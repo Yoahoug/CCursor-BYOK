@@ -37,6 +37,22 @@ interface LatestRelease {
   assetUrl: string
 }
 
+/** 一次安装尝试的结果 —— 通知文案由调用方决定 */
+type InstallOutcome = { ok: true } | { ok: false, error: string }
+
+/** 面板「Check for Updates」按钮的返回值，由 panel-provider 转成 toast 显示 */
+export interface ManualUpdateOutcome {
+  status: 'up-to-date' | 'updated' | 'failed'
+  /** 一行面向用户的说明 */
+  message: string
+}
+
+/** 手动更新的回调：log 进输出通道，onProgress 让面板能显示"正在检查/正在安装" */
+export interface ManualUpdateHooks {
+  log?: (msg: string) => void
+  onProgress?: (phase: 'checking' | 'installing', version?: string) => void
+}
+
 function getCurrentVersion(): string {
   return CURRENT_VERSION
 }
@@ -133,9 +149,38 @@ async function downloadFile(url: string, destination: string): Promise<void> {
 }
 
 /**
+ * 解压 VSIX（本质是 zip）。
+ *
+ * 平台差异很实在：macOS / Linux 有 `unzip`，Windows 10+ 自带的是 bsdtar
+ * （`tar` 能处理 zip）而**没有** `unzip`。原先这里写死 `unzip`，在 Windows 上
+ * 会以 ENOENT 失败，更新永远装不上。按平台给首选命令，再互相兜底一次。
+ */
+async function extractVsix(vsixPath: string, extractDir: string): Promise<void> {
+  const attempts: Array<[string, string[]]> = process.platform === 'win32'
+    ? [
+        ['tar', ['-xf', vsixPath, '-C', extractDir]],
+        ['unzip', ['-q', '-o', vsixPath, '-d', extractDir]],
+      ]
+    : [
+        ['unzip', ['-q', '-o', vsixPath, '-d', extractDir]],
+        ['tar', ['-xf', vsixPath, '-C', extractDir]],
+      ]
+
+  let lastError = ''
+  for (const [command, args] of attempts) {
+    const result = await runProcess(command, args)
+    if (result.code === 0)
+      return
+    lastError = result.stderr.trim() || `${command} exited with ${result.code}`
+  }
+
+  throw new Error(`failed to extract the downloaded vsix: ${lastError}`)
+}
+
+/**
  * 下载 Release 里的 .vsix 并就地覆盖当前扩展目录。
  *
- * .vsix 本质是 zip，解压后 `extension/` 子目录就是扩展内容。
+ * .vsix 是 zip，解压后 `extension/` 子目录就是扩展内容。
  * 覆盖后需要重启 Cursor 才会加载新代码 —— 这个没法绕过（扩展目录里的 JS
  * 已被当前进程 require 进内存），所以只能提示用户重启。
  */
@@ -153,11 +198,7 @@ async function installRelease(assetUrl: string, context: vscode.ExtensionContext
     await mkdir(extractDir, { recursive: true })
     await downloadFile(assetUrl, vsixPath)
 
-    // 与 installer 侧保持一致：用系统 unzip（macOS/Linux 自带，Windows 10+ 亦有）
-    const unzip = await runProcess('unzip', ['-q', '-o', vsixPath, '-d', extractDir])
-    if (unzip.code !== 0) {
-      throw new Error(`failed to extract the downloaded vsix: ${unzip.stderr.trim() || `unzip exited with ${unzip.code}`}`)
-    }
+    await extractVsix(vsixPath, extractDir)
 
     // .vsix 内固定结构：extension/ 下才是扩展本体
     const payloadDir = join(extractDir, 'extension')
@@ -204,6 +245,34 @@ async function cpRecursive(from: string, to: string): Promise<void> {
   await copyFile(from, to)
 }
 
+/**
+ * 只负责"把某个版本装上去"，不弹任何对话框 —— 结果交给调用方去呈现。
+ *
+ * 手动按钮与后台定时检查共用这一段：前者把结果变成面板里的 toast，
+ * 后者用通知 + 重启按钮，但两者的安装行为必须完全一致。
+ */
+async function installLatest(
+  latest: LatestRelease,
+  context: vscode.ExtensionContext,
+  log?: (msg: string) => void,
+): Promise<InstallOutcome> {
+  if (!latest.assetUrl) {
+    return { ok: false, error: `${latest.version} has no downloadable .vsix asset` }
+  }
+
+  log?.(`[UPDATE] installing ${latest.version} from ${latest.assetUrl}`)
+  try {
+    await installRelease(latest.assetUrl, context)
+    log?.(`[UPDATE] ${latest.version} installed; restart required`)
+    return { ok: true }
+  }
+  catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    log?.(`[UPDATE] update failed: ${message}`)
+    return { ok: false, error: message }
+  }
+}
+
 async function performUpdate(latest: LatestRelease, context: vscode.ExtensionContext, log?: (msg: string) => void): Promise<void> {
   if (updating)
     return
@@ -219,29 +288,78 @@ async function performUpdate(latest: LatestRelease, context: vscode.ExtensionCon
   }
 
   updating = true
-  log?.(`[UPDATE] installing ${latest.version} from ${latest.assetUrl}`)
   try {
-    await vscode.window.withProgress(
+    const outcome = await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: `Updating Cursor++ BYOK to ${latest.version}…` },
-      async () => installRelease(latest.assetUrl, context),
+      async () => installLatest(latest, context, log),
     )
-    log?.(`[UPDATE] ${latest.version} installed; restart required`)
-    const action = await vscode.window.showInformationMessage(
-      `Cursor++ BYOK ${latest.version} installed. Restart Cursor to apply it.`,
-      'Restart Cursor',
-    )
-    if (action === 'Restart Cursor')
-      await vscode.commands.executeCommand('workbench.action.reloadWindow')
-  }
-  catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    log?.(`[UPDATE] update failed: ${message}`)
+    if (outcome.ok) {
+      const action = await vscode.window.showInformationMessage(
+        `Cursor++ BYOK ${latest.version} installed. Restart Cursor to apply it.`,
+        'Restart Cursor',
+      )
+      if (action === 'Restart Cursor')
+        await vscode.commands.executeCommand('workbench.action.reloadWindow')
+      return
+    }
+
     const action = await vscode.window.showErrorMessage(
-      `Failed to update Cursor++ BYOK: ${message}`,
+      `Failed to update Cursor++ BYOK: ${outcome.error}`,
       'Open Release Page',
     )
     if (action === 'Open Release Page')
       void vscode.env.openExternal(vscode.Uri.parse(RELEASES_PAGE_URL))
+  }
+  finally {
+    updating = false
+  }
+}
+
+/**
+ * 面板「Check for Updates」按钮的入口：检查一次，有更新就直接装上。
+ *
+ * 与后台定时检查的区别只有两点：不受「Later」的忽略版本影响（用户主动点的），
+ * 以及整个过程**只**在面板内反馈，不额外弹通知 —— 用户就在面板上看着，
+ * 再弹一个系统通知是重复打扰。
+ */
+export async function checkForUpdatesManually(
+  context: vscode.ExtensionContext,
+  hooks: ManualUpdateHooks = {},
+): Promise<ManualUpdateOutcome> {
+  const { log, onProgress } = hooks
+  const current = getCurrentVersion()
+
+  if (updating) {
+    return { status: 'failed', message: 'An update is already in progress.' }
+  }
+
+  onProgress?.('checking')
+  const latest = await fetchLatestRelease()
+  if (!latest) {
+    log?.('[UPDATE] manual check failed: could not read the latest release')
+    return {
+      status: 'failed',
+      message: 'Could not reach GitHub to check for updates. Check your network and try again.',
+    }
+  }
+
+  if (compareVersions(latest.version, current) <= 0) {
+    log?.(`[UPDATE] manual check: up to date (current=${current}, latest=${latest.version})`)
+    return { status: 'up-to-date', message: `You are on the latest version (${current}).` }
+  }
+
+  updating = true
+  try {
+    // 手动触发时不再弹通知进度条：用户就盯着面板，进度在按钮上体现。
+    onProgress?.('installing', normalizeVersion(latest.version))
+    const outcome = await installLatest(latest, context, log)
+    if (!outcome.ok) {
+      return { status: 'failed', message: `Update to ${latest.version} failed: ${outcome.error}` }
+    }
+    return {
+      status: 'updated',
+      message: `${latest.version} installed. Restart Cursor to apply it.`,
+    }
   }
   finally {
     updating = false

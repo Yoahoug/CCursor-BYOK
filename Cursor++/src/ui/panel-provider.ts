@@ -25,6 +25,7 @@ import { logger } from '../server/logger'
 import { buildUsageSummary, renameProviderInUsageFile } from '../server/stats/usageStore'
 import { buildProviderBaseUrl, materializeModelProtocols } from '../shared/providerProtocol'
 import { normalizeRemoteModels } from '../shared/remoteModels'
+import { checkForUpdatesManually } from '../update-check'
 import { renderHtml } from './components/layout'
 import { getState, onStateChange, refreshState } from './state'
 
@@ -140,6 +141,23 @@ export class PanelProvider implements vscode.WebviewViewProvider {
         case 'openLogFile':
           await vscode.commands.executeCommand('cursor2plus.openLogFile')
           break
+        case 'checkUpdate': {
+          // 手动检查 + 更新：过程与结果都在面板内反馈（toast），不另弹系统通知。
+          // 检查要访问 GitHub、安装要下载约 30MB，都可能耗时，按钮上的进度文案
+          // 靠这儿推的两条进度消息区分「正在检查」与「正在安装」。
+          const outcome = await checkForUpdatesManually(this.context, {
+            log: message => logger.info(message),
+            onProgress: (phase, version) => {
+              this.view?.webview.postMessage({ type: 'updateCheckProgress', phase, version })
+            },
+          })
+          this.view?.webview.postMessage({
+            type: 'updateCheckResult',
+            status: outcome.status,
+            text: outcome.message,
+          })
+          break
+        }
         case 'searchCatalog': {
           const query = typeof msg.query === 'string' ? msg.query : ''
           const results = searchCatalog(query, 30)

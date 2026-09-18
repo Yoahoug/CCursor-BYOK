@@ -66,6 +66,14 @@ export function initPreviewHost(options: PreviewHostOptions): PreviewHost {
   const extensionContext = {
     extensionPath,
     extensionUri: vscode.Uri.file(extensionPath),
+    // update-check 靠 context.extension.packageJSON 拼出扩展 id 去查安装目录
+    // （vscode.extensions.getExtension），缺了它那条路径会直接抛 TypeError。
+    // 预览的假扩展目录里没有 package.json，这里就按真实形状内联 —— 这两个值
+    // 与 Cursor++/package.json 里的 publisher / name 保持一致即可。
+    extension: {
+      id: 'cometix-space.cursor2plus',
+      packageJSON: { publisher: 'cometix-space', name: 'cursor2plus' },
+    },
     subscriptions: [],
     globalState: { get: (_key: string, fallback: unknown) => fallback, update: async () => {} },
     workspaceState: { get: (_key: string, fallback: unknown) => fallback, update: async () => {} },
